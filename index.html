@@ -199,8 +199,12 @@
         <button class="btn" data-act="remove">－ Servidor</button>
         <button class="btn ghost" data-act="reset">↺</button>
       </div>
-      <div class="srv-out"></div>
-      <div class="chart-box"><canvas class="chart"></canvas></div>
+      <div class="box">
+        <div class="label">Tráfico entrante</div>
+        <div class="slider-row"><input type="range" min="1" max="40" step="1" value="3"><span class="rate-out">3 req/s</span></div>
+        <div class="slider-row" style="margin-top:6px;font-size:13px"><span class="srv-out" style="font-size:13px"></span><span style="flex:1"></span><span class="util-out ok">60%</span></div>
+      </div>
+      <div class="chart-box" style="height:118px"><canvas class="chart"></canvas></div>
       <div class="stats"></div>
       <ul class="points">
         <li class="fragment">El cliente solo conoce la IP del LB</li>
@@ -209,7 +213,9 @@
     </div>
   </div>
   <aside class="notes">
-    Arranca con 1 servidor y 8 req/s: saturado (cola, latencia, 503). Agregar un servidor: la latencia baja.
+    Arranca con 1 servidor y 3 req/s: un nodo alcanza (60% de utilización). Subir el tráfico a ~8 req/s: se satura
+    (cola, latencia, 503). Agregar un servidor: la latencia baja. Seguir subiendo (ej. 20 req/s) y preguntar cuántos
+    servidores hacen falta: cada uno aguanta ~5 req/s, la idea es mantener la utilización por debajo de ~70% para tener margen ante picos.
     Agregar un tercero: holgura. Quitar uno: el servidor se retira "con gracia" (termina lo que tiene antes de irse).
     Esto es scale out. Requisito clave: los servidores tienen que ser intercambiables (lo vemos en "sesiones").
     Pregunta: ¿cómo decide el LB a cuál mandar cada request? → algoritmos.

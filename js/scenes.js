@@ -245,16 +245,28 @@
 
   S.idea = slide => {
     const sim = setup(slide, {
-      servers: 1, rate: 8, capacity: 4, serviceTime: 0.8, queueMax: 8, arrival: 'poisson'
+      servers: 1, rate: 3, capacity: 4, serviceTime: 0.8, queueMax: 8, arrival: 'poisson'
     });
     const out = slide.querySelector('.srv-out');
+    const range = slide.querySelector('input[type=range]');
+    const rateOut = slide.querySelector('.rate-out');
+    const util = slide.querySelector('.util-out');
     const sync = () => {
-      const n = sim.activeServers();
-      out.innerHTML = `<b>${n}</b> servidor${n > 1 ? 'es' : ''} · capacidad ≈ <b>${n * 5}</b> req/s · tráfico <b>8</b> req/s`;
+      const n = sim.activeServers(), r = +range.value, cap = n * 5;
+      const u = Math.round((r / cap) * 100);
+      rateOut.textContent = `${r} req/s`;
+      out.innerHTML = `<b>${n}</b> servidor${n > 1 ? 'es' : ''} · cap. ≈ <b>${cap}</b> req/s`;
+      util.textContent = `${u}%`;
+      util.className = 'util-out ' + (u < 70 ? 'ok' : u <= 100 ? 'warn' : 'bad');
     };
+    range.addEventListener('input', () => { sim.setRate(+range.value); sync(); });
     on(slide, '[data-act=add]', () => { sim.addServer(); sync(); });
     on(slide, '[data-act=remove]', () => { sim.removeServer(); sync(); });
-    on(slide, '[data-act=reset]', () => { sim.reset(); sync(); });
+    on(slide, '[data-act=reset]', () => {
+      range.value = 3;
+      sim.reset(Object.assign({}, sim.o, { rate: 3, servers: 1 }));
+      sync();
+    });
     sync();
     return life(sim);
   };
