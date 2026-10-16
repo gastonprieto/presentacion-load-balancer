@@ -561,7 +561,45 @@
     return life(sim);
   };
 
-  /* ---------- 17. playground ---------- */
+  /* ---------- 17. parate: la DB como cuello de botella ---------- */
+
+  S.dbneck = slide => {
+    const APP = 4 / (0.2 + 0.5 + 0.6); // workers / (proceso + consulta + viaje a la DB) ≈ 3 req/s por servidor
+    const dbCap = { single: 8, cache: 40, replicas: 20 };
+    let mode = 'single';
+    const opts = () => ({
+      servers: 2, rate: 4, capacity: 4, serviceTime: 0.2, serviceJitter: 0.2, queueMax: 8,
+      arrival: 'poisson', maxServers: 6, slowThreshold: 2.5, db: { mode }
+    });
+    const sim = setup(slide, opts());
+    const range = slide.querySelector('input[type=range]');
+    const rateOut = slide.querySelector('.rate-out');
+    const out = slide.querySelector('.cap-out');
+
+    const sync = () => {
+      const n = sim.activeServers(), app = Math.round(n * APP), db = dbCap[mode];
+      const neck = app <= db ? 'app' : 'DB';
+      rateOut.textContent = `${range.value} req/s`;
+      out.innerHTML = `app ≈ <b>${app}</b> req/s · datos ≈ <b>${db}</b> req/s · cuello: <b class="${neck === 'DB' ? 'neck' : ''}">${neck}</b>`;
+    };
+    const restart = () => {
+      const servers = sim.activeServers();
+      sim.reset(Object.assign(opts(), { servers, rate: +range.value }));
+      sync();
+    };
+    range.addEventListener('input', () => { sim.setRate(+range.value); sync(); });
+    on(slide, '[data-act=add]', () => { sim.addServer(); sync(); });
+    on(slide, '[data-act=remove]', () => { sim.removeServer(); sync(); });
+    on(slide, '[data-act=reset]', () => { mode = 'single'; range.value = 4; seg0(); showMode(slide, mode); sim.reset(opts()); sync(); });
+    seg(slide, 'db', v => { mode = v; showMode(slide, v); restart(); });
+    const seg0 = () => slide.querySelectorAll('.seg[data-group="db"] button')
+      .forEach(b => b.classList.toggle('active', b.dataset.v === 'single'));
+    showMode(slide, mode);
+    sync();
+    return life(sim);
+  };
+
+  /* ---------- 18. playground ---------- */
 
   S.playground = slide => {
     const sim = setup(slide, {

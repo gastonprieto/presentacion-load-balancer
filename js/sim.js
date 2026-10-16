@@ -9,7 +9,7 @@
 
   const C = {
     req: '#7dd3fc', ok: '#4ade80', slow: '#facc15', err: '#f87171',
-    hc: '#c084fc', redis: '#fb7185', text: '#e2e8f0', muted: '#94a3b8'
+    hc: '#c084fc', redis: '#fb7185', db: '#2dd4bf', text: '#e2e8f0', muted: '#94a3b8'
   };
   const CLIENT_COLORS = ['#38bdf8', '#f472b6', '#a3e635', '#fb923c', '#a78bfa', '#2dd4bf'];
   const LOST = { lost: true };
@@ -112,7 +112,14 @@
     heavyRatio: 0, heavyFactor: 6, queueMax: 8, travel: 0.45, slowThreshold: 1.5,
     healthChecks: false, hcInterval: 1, hcFall: 2,
     weights: null, colorByClient: false, clickToKill: false,
-    sessions: null, maxServers: 8, showHandled: true, showVersion: false
+    sessions: null, maxServers: 8, showHandled: true, showVersion: false,
+    // capa de datos detrás de los servidores: { mode: 'single' | 'cache' | 'replicas', ... } (ver DB_DEFAULTS)
+    db: null
+  };
+
+  const DB_DEFAULTS = {
+    mode: 'single', capacity: 4, queryTime: 0.5, travel: 0.3, queueMax: 40,
+    cacheHit: 0.8, cacheCapacity: 16, cacheTime: 0.06, readRatio: 0.8, replicas: 2
   };
 
   class Sim {
@@ -145,11 +152,13 @@
       this.seq = 0; this.rr = 0; this.arrTimer = null; this.hc = null;
       this.stats = { sent: 0, ok: 0, slow: 0, err: 0 };
       this.log = [];
-      this.clients = []; this.servers = []; this.lb = null; this.redis = null;
+      this.clients = []; this.servers = []; this.lb = null; this.redis = null; this.data = null;
+      this.db = this.o.db ? Object.assign({}, DB_DEFAULTS, this.o.db) : null;
 
       for (let i = 0; i < this.o.clients; i++) this._addClient(i);
       if (this.o.lb) this._addLB();
       if (this.o.sessions === 'shared') this._addRedis();
+      if (this.db) this._addData();
       for (let i = 0; i < this.o.servers; i++) this._addServer(false);
       this._layout(false);
       this._buildLinks();
@@ -224,6 +233,14 @@
         active: 0, queue: [], inProc: new Set(), conns: 0, handled: 0, fails: 0, cw: 0,
         sessions: new Set(), sig: ''
       };
+      this._makeView(s);
+      if (this.o.clickToKill) s.view.g.addEventListener('click', () => this.toggleServer(s));
+      this.servers.push(s);
+      return s;
+    }
+
+    // Vista de una caja tipo servidor (también la usan los nodos de datos)
+    _makeView(s) {
       const g = svgEl('g', { class: 'srv' }, this.gNodes);
       const inner = svgEl('g', {}, g);
       s.view = {
@@ -238,26 +255,51 @@
         bar: svgEl('rect', { class: 'bar', rx: 2.5, height: 5 }, inner),
         prog: svgEl('rect', { class: 'prog', rx: 2.5, height: 5 }, inner)
       };
-      if (this.o.clickToKill) g.addEventListener('click', () => this.toggleServer(s));
-      this.servers.push(s);
-      return s;
+    }
+
+    _addData() {
+      const d = this.db;
+      const node = (name, role, desc, capacity, queryTime) => {
+        const n = {
+          kind: 'db', role, name, desc, x: 0, y: 0, hw: 84, hh: 40, scale: 1,
+          up: true, healthy: true, version: 'v1', capacity, queryTime,
+          active: 0, queue: [], inProc: new Set(), conns: 0, handled: 0, sessions: new Set(), sig: ''
+        };
+        this._makeView(n);
+        return n;
+      };
+      const primary = node('DB', 'primary', d.mode === 'replicas' ? 'primaria · escrituras' : 'PostgreSQL', d.capacity, d.queryTime);
+      this.data = { primary, cache: null, replicas: [], rr: 0, nodes: [primary] };
+      if (d.mode === 'cache') {
+        this.data.cache = node('Caché', 'cache', `Redis · hit ${Math.round(d.cacheHit * 100)}%`, d.cacheCapacity, d.cacheTime);
+        this.data.nodes = [this.data.cache, primary];
+      } else if (d.mode === 'replicas') {
+        for (let i = 0; i < d.replicas; i++) {
+          this.data.replicas.push(node(`Réplica ${i + 1}`, 'replica', 'solo lecturas', d.capacity, d.queryTime));
+        }
+        this.data.nodes = [primary, ...this.data.replicas];
+      }
     }
 
     _layout(animate) {
       const n = this.clients.length;
       const clientX = this.lb ? 70 : 120;
+      if (this.data) {
+        const k = this.data.nodes.length;
+        this.data.nodes.forEach((d, i) => { d.x = 800; d.y = H * (i + 1) / (k + 1); });
+      }
       this.clients.forEach((c, i) => {
         c.x = clientX; c.y = H * (i + 1) / (n + 1);
         c.view.g.setAttribute('transform', `translate(${c.x},${c.y})`);
       });
       if (this.lb) {
-        this.lb.x = this.redis ? 280 : 330;
+        this.lb.x = this.redis ? 280 : this.data ? 250 : 330;
         this.lb.view.g.setAttribute('transform', `translate(${this.lb.x},${this.lb.y})`);
       }
       if (this.redis) this.redis.view.g.setAttribute('transform', `translate(${this.redis.x},${this.redis.y})`);
 
       const m = this.servers.length;
-      const sx = this.redis ? 570 : (this.lb ? 700 : 560);
+      const sx = this.redis ? 570 : this.data ? 505 : (this.lb ? 700 : 560);
       const gap = H / (m + 1);
       const hh = Math.min(44, gap / 2 - 6);
       this.servers.forEach((s, i) => {
@@ -285,6 +327,7 @@
       this.clients.forEach(c => add(c, this.lb || this.servers[0]));
       if (this.lb) this.servers.forEach(s => { s.link = add(this.lb, s); });
       if (this.redis) this.servers.forEach(s => add(s, this.redis, 'redis-link'));
+      if (this.data) this.servers.forEach(s => this.data.nodes.forEach(d => add(s, d, 'db-link')));
     }
 
     /* ---------- render por frame ---------- */
@@ -298,6 +341,7 @@
         }
       }
       this.servers.forEach(s => this._drawServer(s));
+      if (this.data) this.data.nodes.forEach(d => this._drawServer(d));
       if (this.lb) this._drawLB();
       if (this.redis) this._drawChips(this.redis, this.redis.view.chips, true);
       this._checkRemovals();
@@ -329,6 +373,7 @@
       else if (!s.healthy) cls += ' unhealthy';
       if (s.version !== 'v1') cls += ' v2';
       if (compact) cls += ' compact';
+      if (s.kind === 'db') cls += ` data ${s.role}`;
       v.g.setAttribute('class', cls);
 
       v.box.setAttribute('x', -hw); v.box.setAttribute('y', -hh);
@@ -336,8 +381,8 @@
 
       const ty = compact ? 5 : -hh + 22;
       let title = s.name;
-      if (this.o.weights) title += ` · peso ${s.weight}`;
-      if (this.o.showVersion) title += ` · ${s.version}`;
+      if (this.o.weights && s.kind === 'server') title += ` · peso ${s.weight}`;
+      if (this.o.showVersion && s.kind === 'server') title += ` · ${s.version}`;
       v.title.textContent = title;
       v.title.setAttribute('x', -hw + 12); v.title.setAttribute('y', ty);
 
@@ -347,6 +392,7 @@
       else if (s.removing) sub = 'retirando…';
       else if (s.draining) sub = 'drenando conexiones…';
       else if (!s.healthy) sub = '⚠ fuera de rotación';
+      else if (s.kind === 'db') sub = s.desc;
       else sub = this.o.showHandled ? `atendidas: ${s.handled}` : '';
 
       const q = s.queue.length;
@@ -365,7 +411,7 @@
       v.prog.setAttribute('width', s.progress == null ? 0 : bw * s.progress);
 
       // cola: cuadraditos esperando sobre el link de entrada
-      const qn = Math.min(q, 14);
+      const qn = Math.min(q, s.kind === 'db' ? 11 : 14);
       while (v.qg.childElementCount < qn) svgEl('rect', { width: 8, height: 8, rx: 1.5, class: 'qsq' }, v.qg);
       while (v.qg.childElementCount > qn) v.qg.lastChild.remove();
       for (let i = 0; i < qn; i++) {
@@ -534,10 +580,54 @@
       const j = 1 + (Math.random() * 2 - 1) * this.o.serviceJitter;
       const d = this.o.serviceTime * (req.heavy ? this.o.heavyFactor : 1) * j;
       req.timer = this.clock.after(d, () => {
-        s.active--; s.conns--; s.handled++;
-        s.inProc.delete(req);
-        this._respond(req, s);
-        this._dequeue(s);
+        req.timer = null;
+        // con capa de datos, el worker queda ocupado esperando la consulta
+        if (this.data) this._query(req, s, () => this._finish(req, s));
+        else this._finish(req, s);
+      });
+    }
+
+    _finish(req, s) {
+      s.active--; s.conns--; s.handled++;
+      s.inProc.delete(req);
+      this._respond(req, s);
+      this._dequeue(s);
+    }
+
+    _pickData() {
+      const { primary, cache, replicas } = this.data;
+      if (cache) return Math.random() < this.db.cacheHit ? cache : primary;
+      if (replicas.length && Math.random() < this.db.readRatio) return replicas[this.data.rr++ % replicas.length];
+      return primary;
+    }
+
+    _query(req, s, done) {
+      const d = this._pickData();
+      const pk = this._packet(3.5, C.db);
+      this._move(pk, s, d, () => {
+        if (req.aborted) { pk.remove(); return; }
+        const q = { req, s, pk, done };
+        if (d.active < d.capacity) this._dbRun(d, q);
+        else if (d.queue.length < this.db.queueMax) { pk.style.opacity = 0; d.queue.push(q); }
+        else {
+          // la DB no da abasto: el servidor corta por timeout
+          pk.remove();
+          s.active--; s.conns--; s.inProc.delete(req);
+          this._fail(req, s, '504');
+          this._dequeue(s);
+        }
+      }, this.db.travel);
+    }
+
+    _dbRun(d, q) {
+      d.active++;
+      q.pk.style.opacity = 0;
+      const j = 1 + (Math.random() * 2 - 1) * 0.25;
+      this.clock.after(d.queryTime * j, () => {
+        d.active--; d.handled++;
+        q.pk.style.opacity = 1;
+        this._move(q.pk, d, q.s, () => { q.pk.remove(); if (!q.req.aborted) q.done(); }, this.db.travel);
+        while (d.active < d.capacity && d.queue.length) this._dbRun(d, d.queue.shift());
       });
     }
 
@@ -567,7 +657,7 @@
 
     _record(req, status) {
       this.stats[status]++;
-      // latencia = tiempo en el servidor (cola + proceso); el viaje animado de los puntos no cuenta
+      // latencia = tiempo en el servidor (cola + proceso + DB); el viaje animado de los puntos no cuenta
       this.log.push({ t: this.now, lat: req.lat != null ? req.lat : this.now - req.t0, status });
       while (this.log.length && this.log[0].t < this.now - 60) this.log.shift();
     }
@@ -634,7 +724,8 @@
       if (!up) {
         const code = this.lb ? '502' : 'ERR';
         [...s.inProc].forEach(req => {
-          this.clock.cancel(req.timer);
+          if (req.timer) this.clock.cancel(req.timer);
+          req.aborted = true;
           s.active--; s.conns--;
           this._fail(req, s, code);
         });

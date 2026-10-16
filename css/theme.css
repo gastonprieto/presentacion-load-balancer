@@ -130,6 +130,10 @@ html, body { background: var(--bg); }
 .util-out.warn { color: var(--yellow); background: rgba(250, 204, 21, .1); }
 .util-out.bad { color: var(--red); background: rgba(248, 113, 113, .12); }
 .srv-out { font: 14px var(--mono); color: var(--muted); }
+.cap-out { font: 13px var(--mono); color: var(--muted); margin-top: 6px; }
+.cap-out b { color: var(--cyan); }
+.cap-out b.neck { color: var(--red); }
+.panel .mode-text { font-size: 15px; line-height: 1.4; color: #cbd5e1; }
 .srv-out b { color: var(--cyan); }
 
 .field { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 15px; color: #cbd5e1; }
@@ -180,6 +184,10 @@ html, body { background: var(--bg); }
 .netsim .srv.unhealthy .node-box { stroke: var(--orange); }
 .netsim .srv.deploying .node-box { fill: #33280a; stroke: var(--yellow); }
 .netsim .srv.down .node-box { fill: #3a1018; stroke: var(--red); }
+.netsim .srv.data .node-box { fill: #0c2a2a; stroke: var(--teal); }
+.netsim .srv.data.cache .node-box { fill: #2a1020; stroke: #fb7185; }
+.netsim .srv.data.replica .node-box { stroke-dasharray: 6 4; }
+.netsim .link.db-link { stroke: #1d4a4a; stroke-width: 1.5; stroke-dasharray: 3 5; }
 .netsim .srv.clickable { cursor: pointer; }
 .netsim .srv.clickable:hover .node-box { stroke-width: 3.5; filter: brightness(1.25); }
 
@@ -249,11 +257,11 @@ html, body { background: var(--bg); }
 
 /* ---------- resumen ---------- */
 
-.summary { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 1fr; gap: 16px; margin-top: 8px; height: 560px; }
-.card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 24px 22px; display: flex; flex-direction: column; gap: 12px; }
-.card .ico { font-size: 40px; }
-.card h4 { margin: 0; font-size: 24px; color: #fff; font-weight: 800; letter-spacing: -.01em; }
-.card p { font-size: 18px; color: #cbd5e1; line-height: 1.45; }
+.summary { display: grid; grid-template-columns: repeat(3, 1fr); grid-auto-rows: 1fr; gap: 16px; margin-top: 8px; height: 560px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 14px 20px; display: flex; flex-direction: column; gap: 6px; }
+.card .ico { font-size: 30px; }
+.card h4 { margin: 0; font-size: 22px; color: #fff; font-weight: 800; letter-spacing: -.01em; }
+.card p { font-size: 17px; color: #cbd5e1; line-height: 1.45; }
 .card.bad { border-top: 3px solid var(--red); }
 .card.good { border-top: 3px solid var(--green); }
 

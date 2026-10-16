@@ -568,7 +568,50 @@
   </aside>
 </section>
 
-<!-- ============ 17. PLAYGROUND ============ -->
+<!-- ============ 17. LA DB COMO CUELLO DE BOTELLA ============ -->
+<section data-scene="dbneck">
+  <div class="kicker red">⏸ Un parate</div>
+  <h2>¿Resolvimos todo? A veces, movimos el problema</h2>
+  <div class="demo">
+    <div class="stage"><svg class="sim"></svg></div>
+    <div class="panel" style="gap:10px">
+      <p class="lead">Escalamos la app… pero todos los servidores le pegan a <b>la misma base de datos</b>. El cuello de botella se mudó.</p>
+      <div class="seg" data-group="db">
+        <button data-v="single" class="active">Una DB</button>
+        <button data-v="cache">+ Caché</button>
+        <button data-v="replicas">+ Réplicas</button>
+      </div>
+      <p class="mode-text" data-mode="single">Todas las consultas van a una DB: 4 conexiones × ~0,5 s ≈ <b>8 req/s</b>. Subí el tráfico y agregá servidores: la cola se forma en la DB.</p>
+      <p class="mode-text" data-mode="cache">Un <b>caché</b> (Redis) responde el 80% de las lecturas en ~60 ms; solo los <i>misses</i> llegan a la DB. ⚠️ Invalidación y datos viejos.</p>
+      <p class="mode-text" data-mode="replicas"><b>Réplicas de lectura</b>: las lecturas (80%) se reparten entre réplicas y las escrituras van a la primaria. ⚠️ Lag de replicación.</p>
+      <div class="actions">
+        <button class="btn" data-act="add">＋ Servidor</button>
+        <button class="btn" data-act="remove">－ Servidor</button>
+        <button class="btn ghost" data-act="reset">↺</button>
+      </div>
+      <div class="box">
+        <div class="label">Tráfico entrante</div>
+        <div class="slider-row"><input type="range" min="1" max="30" step="1" value="4"><span class="rate-out">4 req/s</span></div>
+        <div class="cap-out"></div>
+      </div>
+      <div class="chart-box" style="height:112px"><canvas class="chart"></canvas></div>
+      <div class="stats" data-fields="ok,err,p95"></div>
+    </div>
+  </div>
+  <aside class="notes">
+    Parate después de todas las soluciones: el LB resolvió la capa de app, pero no todo. Arranca con 2 servidores y 4 req/s: todo bien. Subir el tráfico a ~15 req/s y agregar servidores de app: no mejora,
+    porque la cola (cuadraditos) se forma en la DB y los workers de los servidores quedan bloqueados esperando la consulta.
+    Escalar la capa sin estado es fácil; la capa con estado (la DB) es la difícil. El cuello de botella siempre se mueve al
+    siguiente componente.
+    "+ Caché": la mayoría de las consultas las responde Redis y la DB respira. Costo: invalidación y datos potencialmente viejos.
+    "+ Réplicas": las lecturas se reparten entre réplicas; las escrituras siguen yendo a la primaria (lag de replicación:
+    leer justo después de escribir puede devolver un dato viejo).
+    Mencionar también: connection pooling (PgBouncer), colas para trabajo asíncrono y, para escrituras, sharding.
+    Pregunta: ¿qué pasa si el 80% de las operaciones fueran escrituras? (ni caché ni réplicas ayudan → sharding).
+  </aside>
+</section>
+
+<!-- ============ 18. PLAYGROUND ============ -->
 <section data-scene="playground">
   <div class="kicker green">Tu turno</div>
   <h2>Playground</h2>
@@ -611,7 +654,7 @@
   </aside>
 </section>
 
-<!-- ============ 18. RESUMEN ============ -->
+<!-- ============ 19. RESUMEN ============ -->
 <section>
   <div class="kicker">Resumen</div>
   <h2>Lo que nos llevamos</h2>
@@ -624,6 +667,7 @@
     <div class="card good fragment"><div class="ico">🧭</div><h4>L4 vs L7</h4><p>IP/puerto, rápido y genérico, vs. HTTP: routing por path, headers y cookies.</p></div>
     <div class="card good fragment"><div class="ico">🛡️</div><h4>Redundar el LB</h4><p>Activo-pasivo con VIP y heartbeats, o un LB gestionado.</p></div>
     <div class="card good fragment"><div class="ico">🔁</div><h4>Rolling deploys</h4><p>Drenar, actualizar, verificar y seguir: deploys sin cortar el servicio.</p></div>
+    <div class="card bad fragment"><div class="ico">🗄️</div><h4>El cuello se mueve</h4><p>Escalar la app no escala la DB: caché, réplicas de lectura y, para escrituras, sharding.</p></div>
   </div>
   <aside class="notes">
     Repasar cada tarjeta conectándola con la demo correspondiente. Idea central: un LB no es solo "repartir carga"; es lo
