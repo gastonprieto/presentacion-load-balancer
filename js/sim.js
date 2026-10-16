@@ -109,7 +109,7 @@
   const DEFAULTS = {
     clients: 1, lb: true, servers: 3, algorithm: 'rr',
     rate: 3, arrival: 'uniform', capacity: 4, serviceTime: 0.8, serviceJitter: 0.25,
-    heavyRatio: 0, heavyFactor: 6, queueMax: 8, travel: 0.45, slowThreshold: 2.5,
+    heavyRatio: 0, heavyFactor: 6, queueMax: 8, travel: 0.45, slowThreshold: 1.5,
     healthChecks: false, hcInterval: 1, hcFall: 2,
     weights: null, colorByClient: false, clickToKill: false,
     sessions: null, maxServers: 8, showHandled: true, showVersion: false
@@ -502,6 +502,7 @@
 
     _atServer(req, s) {
       if (!s.up) { s.conns--; this._fail(req, s, this.lb ? '502' : 'ERR'); return; }
+      req.tServer = this.now;
       const c = req.client, mode = this.o.sessions;
 
       if (mode === 'local' || mode === 'sticky') {
@@ -545,8 +546,8 @@
     }
 
     _respond(req, s) {
-      const hops = this.lb ? 2 : 1;
-      const slow = this.now - req.t0 + hops * this.o.travel > this.o.slowThreshold;
+      // lenta = mucho tiempo dentro del servidor (cola + proceso); el viaje animado no cuenta
+      const slow = this.now - req.tServer > this.o.slowThreshold;
       req.pk.setAttribute('fill', slow ? C.slow : C.ok);
       req.pk.style.opacity = 1;
       this._travel(req.pk, this._back(req, s), () => { req.pk.remove(); this._record(req, slow ? 'slow' : 'ok'); });

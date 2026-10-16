@@ -73,7 +73,7 @@
   S.saturation = slide => {
     const sim = setup(slide, {
       lb: false, servers: 1, rate: 2, arrival: 'poisson', capacity: 4,
-      serviceTime: 0.8, serviceJitter: 0.2, queueMax: 10, slowThreshold: 2
+      serviceTime: 0.8, serviceJitter: 0.2, queueMax: 10
     });
     const range = slide.querySelector('input[type=range]');
     const out = slide.querySelector('.rate-out');
@@ -105,7 +105,7 @@
       { spec: '224 vCPU · 12 TB', label: '224', w: 280, h: 445, cap: 29, cost: 480 }
     ];
     const FLOOR = 540, CEIL = 80;
-    const BASE = { lb: false, servers: 1, rate: 4, arrival: 'poisson', capacity: 4, serviceTime: 0.8, serviceJitter: 0.2, queueMax: 10, slowThreshold: 2, showHandled: false };
+    const BASE = { lb: false, servers: 1, rate: 4, arrival: 'poisson', capacity: 4, serviceTime: 0.8, serviceJitter: 0.2, queueMax: 10, showHandled: false };
 
     const sim = setup(slide, BASE);
     const svg = sim.svg;
@@ -245,7 +245,7 @@
 
   S.idea = slide => {
     const sim = setup(slide, {
-      servers: 1, rate: 8, capacity: 4, serviceTime: 0.8, queueMax: 8, arrival: 'poisson', slowThreshold: 2.5
+      servers: 1, rate: 8, capacity: 4, serviceTime: 0.8, queueMax: 8, arrival: 'poisson'
     });
     const out = slide.querySelector('.srv-out');
     const sync = () => {
@@ -274,7 +274,7 @@
   S.lc = slide => {
     const base = {
       servers: 3, rate: 5, capacity: 3, serviceTime: 0.45, heavyRatio: 0.2, heavyFactor: 8,
-      queueMax: 8, arrival: 'poisson', slowThreshold: 2.5
+      queueMax: 8, arrival: 'poisson'
     };
     const sim = setup(slide, Object.assign({ algorithm: 'rr' }, base));
     seg(slide, 'algo', v => sim.reset(Object.assign({ algorithm: v }, base)));
