@@ -547,7 +547,8 @@
 
     _respond(req, s) {
       // lenta = mucho tiempo dentro del servidor (cola + proceso); el viaje animado no cuenta
-      const slow = this.now - req.tServer > this.o.slowThreshold;
+      req.lat = this.now - req.tServer;
+      const slow = req.lat > this.o.slowThreshold;
       req.pk.setAttribute('fill', slow ? C.slow : C.ok);
       req.pk.style.opacity = 1;
       this._travel(req.pk, this._back(req, s), () => { req.pk.remove(); this._record(req, slow ? 'slow' : 'ok'); });
@@ -566,7 +567,8 @@
 
     _record(req, status) {
       this.stats[status]++;
-      this.log.push({ t: this.now, lat: this.now - req.t0, status });
+      // latencia = tiempo en el servidor (cola + proceso); el viaje animado de los puntos no cuenta
+      this.log.push({ t: this.now, lat: req.lat != null ? req.lat : this.now - req.t0, status });
       while (this.log.length && this.log[0].t < this.now - 60) this.log.shift();
     }
 
