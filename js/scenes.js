@@ -11,11 +11,13 @@
   function setup(slide, opts) {
     const sim = new Sim(slide.querySelector('svg.sim'), opts);
     const st = slide.querySelector('.stats');
-    if (st) Widgets.stats(st, sim, st.dataset.fields ? st.dataset.fields.split(',') : null);
+    if (st) Widgets.stats(st, sim, st.dataset.fields ? st.dataset.fields.split(',') : null, +(st.dataset.window || 5));
     const strip = slide.querySelector('.strip');
     if (strip) Widgets.strip(strip, sim);
     const cv = slide.querySelector('canvas.chart');
     if (cv) Widgets.chart(cv, sim);
+    const hist = slide.querySelector('canvas.histo');
+    if (hist) Widgets.histogram(hist, sim);
     return sim;
   }
 
@@ -293,7 +295,22 @@
     return life(sim);
   };
 
-  /* ---------- 10. ip hash / weighted ---------- */
+  /* ---------- 10. latencia de cola: p50 vs p95 vs p99 ---------- */
+
+  S.tail = slide => {
+    let heavy = 0.03;
+    const opts = algorithm => ({
+      servers: 3, rate: 8, capacity: 3, serviceTime: 0.45, heavyRatio: heavy, heavyFactor: 8,
+      queueMax: 8, arrival: 'poisson', algorithm
+    });
+    let algo = 'rr';
+    const sim = setup(slide, opts(algo));
+    seg(slide, 'algo', v => { algo = v; sim.reset(opts(algo)); });
+    seg(slide, 'heavy', v => { heavy = +v; sim.reset(opts(algo)); });
+    return life(sim);
+  };
+
+  /* ---------- 11. ip hash / weighted ---------- */
 
   S.hash = slide => {
     const modes = {
@@ -308,7 +325,7 @@
     return life(sim);
   };
 
-  /* ---------- 11. health checks ---------- */
+  /* ---------- 12. health checks ---------- */
 
   S.health = slide => {
     const sim = setup(slide, {
@@ -319,7 +336,7 @@
     return life(sim);
   };
 
-  /* ---------- 12. sesiones ---------- */
+  /* ---------- 13. sesiones ---------- */
 
   S.sessions = slide => {
     const opts = mode => ({
@@ -332,7 +349,7 @@
     return life(sim);
   };
 
-  /* ---------- 14. LB redundante ---------- */
+  /* ---------- 15. LB redundante ---------- */
 
   S.lbha = slide => {
     const svg = slide.querySelector('svg.sim');
@@ -499,7 +516,7 @@
     return { start: () => clock.start(), stop: () => clock.stop() };
   };
 
-  /* ---------- 15. rolling deploy ---------- */
+  /* ---------- 16. rolling deploy ---------- */
 
   S.rolling = slide => {
     const sim = setup(slide, {
@@ -544,7 +561,7 @@
     return life(sim);
   };
 
-  /* ---------- 16. playground ---------- */
+  /* ---------- 17. playground ---------- */
 
   S.playground = slide => {
     const sim = setup(slide, {

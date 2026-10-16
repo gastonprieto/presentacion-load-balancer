@@ -285,7 +285,44 @@
   </aside>
 </section>
 
-<!-- ============ 10. IP HASH / WEIGHTED ============ -->
+<!-- ============ 10. LATENCIA DE COLA ============ -->
+<section data-scene="tail">
+  <div class="kicker purple">Medir bien</div>
+  <h2>La mediana engaña: p50, p95, p99</h2>
+  <div class="demo">
+    <div class="stage">
+      <svg class="sim"></svg>
+      <div class="hint">● grande = request pesado (8× más lento)</div>
+    </div>
+    <div class="panel">
+      <p class="lead">El promedio y la mediana esconden a los usuarios con mala suerte: unos pocos requests lentos <b>estiran la cola</b>.</p>
+      <div class="seg" data-group="heavy">
+        <button data-v="0">Sin pesados</button>
+        <button data-v="0.03" class="active">3% pesados</button>
+      </div>
+      <div class="seg" data-group="algo">
+        <button data-v="rr" class="active">Round Robin</button>
+        <button data-v="lc">Least Connections</button>
+      </div>
+      <div class="chart-box" style="height:200px"><canvas class="histo"></canvas></div>
+      <div class="stats" data-fields="p50,p95,p99" data-window="30"></div>
+      <ul class="points">
+        <li class="fragment">Una página que hace 20 requests tiene 1 − 0,95²⁰ ≈ <b>64%</b> de chance de pegarle a la p95</li>
+        <li class="fragment">Por eso los SLOs se definen en p95/p99, no en el promedio</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    El histograma muestra la latencia (tiempo en el servidor) de las respuestas exitosas de los últimos 30 s; las líneas
+    marcan p50, p95 y p99. Con "Sin pesados" las tres líneas quedan juntas. Con "3% pesados", la p50 casi no cambia pero la
+    p99 se va lejos: el gráfico tiene una "cola larga" a la derecha. Con Round Robin además sube la p95, porque requests
+    normales quedan encolados detrás de uno pesado; con Least Connections la p95 vuelve a acercarse a la p50.
+    Cuenta clave (Dean y Barroso, "The Tail at Scale"): si una página dispara 20 requests y cada uno tiene 5% de chance de
+    ser lento, 1 − 0,95^20 ≈ 64% de las páginas verán al menos uno lento. La experiencia la define la cola, no la mediana.
+  </aside>
+</section>
+
+<!-- ============ 11. IP HASH / WEIGHTED ============ -->
 <section data-scene="hash">
   <div class="kicker purple">Algoritmos · 3</div>
   <h2>IP Hash y Weighted</h2>
@@ -329,7 +366,7 @@
   </aside>
 </section>
 
-<!-- ============ 11. HEALTH CHECKS ============ -->
+<!-- ============ 12. HEALTH CHECKS ============ -->
 <section data-scene="health">
   <div class="kicker green">Resiliencia</div>
   <h2>Health checks</h2>
@@ -364,7 +401,7 @@
   </aside>
 </section>
 
-<!-- ============ 12. SESIONES ============ -->
+<!-- ============ 13. SESIONES ============ -->
 <section data-scene="sessions">
   <div class="kicker purple">Estado</div>
   <h2>¿Dónde vive la sesión?</h2>
@@ -415,7 +452,7 @@
   </aside>
 </section>
 
-<!-- ============ 13. L4 vs L7 ============ -->
+<!-- ============ 14. L4 vs L7 ============ -->
 <section>
   <div class="kicker purple">Tipos de load balancer</div>
   <h2>Capa 4 vs. Capa 7</h2>
@@ -464,7 +501,7 @@
   </aside>
 </section>
 
-<!-- ============ 14. LB COMO SPOF ============ -->
+<!-- ============ 15. LB COMO SPOF ============ -->
 <section data-scene="lbha">
   <div class="kicker red">¿Y si se cae el LB?</div>
   <h2>El load balancer como nuevo SPOF</h2>
@@ -497,7 +534,7 @@
   </aside>
 </section>
 
-<!-- ============ 15. ROLLING DEPLOY ============ -->
+<!-- ============ 16. ROLLING DEPLOY ============ -->
 <section data-scene="rolling">
   <div class="kicker green">Problema 4, resuelto</div>
   <h2>Rolling deploy: cero downtime</h2>
@@ -531,7 +568,7 @@
   </aside>
 </section>
 
-<!-- ============ 16. PLAYGROUND ============ -->
+<!-- ============ 17. PLAYGROUND ============ -->
 <section data-scene="playground">
   <div class="kicker green">Tu turno</div>
   <h2>Playground</h2>
@@ -574,7 +611,7 @@
   </aside>
 </section>
 
-<!-- ============ 17. RESUMEN ============ -->
+<!-- ============ 18. RESUMEN ============ -->
 <section>
   <div class="kicker">Resumen</div>
   <h2>Lo que nos llevamos</h2>

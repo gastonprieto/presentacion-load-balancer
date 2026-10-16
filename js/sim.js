@@ -585,7 +585,7 @@
       }
       lats.sort((a, b) => a - b);
       const q = p => (lats.length ? lats[Math.min(lats.length - 1, Math.floor(p * lats.length))] : null);
-      return { n, err, rps: n / sec, errPct: n ? (err / n) * 100 : 0, p50: q(0.5), p95: q(0.95) };
+      return { n, err, rps: n / sec, errPct: n ? (err / n) * 100 : 0, p50: q(0.5), p95: q(0.95), p99: q(0.99) };
     }
 
     /* ---------- health checks ---------- */
