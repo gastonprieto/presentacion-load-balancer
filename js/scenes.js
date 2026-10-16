@@ -106,8 +106,16 @@
       { spec: '128 vCPU · 1 TB', label: '128', w: 265, h: 380, cap: 24, cost: 140 },
       { spec: '224 vCPU · 12 TB', label: '224', w: 280, h: 445, cap: 29, cost: 480 }
     ];
-    const FLOOR = 540, CEIL = 80;
-    const BASE = { lb: false, servers: 1, rate: 4, arrival: 'poisson', capacity: 4, serviceTime: 0.8, serviceJitter: 0.2, queueMax: 10, showHandled: false };
+    // en celular el diagrama sigue siendo horizontal (el techo va arriba), en un lienzo más chico
+    const M = NetKit.MOBILE;
+    const G = M
+      ? { FLOOR: 410, CEIL: 56, X: 255, cx: 66, cy: 360, hw: w => 58 + (w - 210) / 70 * 68, hh: h => h * 0.385 }
+      : { FLOOR: 540, CEIL: 80, X: 560, cx: null, cy: 430, hw: w => w / 2, hh: h => h / 2 };
+    const { FLOOR, CEIL } = G;
+    const BASE = {
+      lb: false, servers: 1, rate: 4, arrival: 'poisson', capacity: 4, serviceTime: 0.8, serviceJitter: 0.2,
+      queueMax: 10, showHandled: false, orient: 'h'
+    };
 
     const sim = setup(slide, BASE);
     const svg = sim.svg;
@@ -121,11 +129,12 @@
     const decorate = () => {
       const g = svgEl('g', {});
       svg.insertBefore(g, svg.firstChild);
-      svgEl('rect', { x: 0, y: 0, width: 900, height: CEIL, class: 'ceil-zone' }, g);
-      ceil = svgEl('line', { x1: 20, x2: 880, y1: CEIL, y2: CEIL, class: 'ceil' }, g);
-      svgEl('text', { x: 880, y: CEIL - 12, class: 't-sub', 'text-anchor': 'end' }, g)
-        .textContent = 'techo físico: la máquina más grande que se puede comprar';
-      svgEl('line', { x1: 20, x2: 880, y1: FLOOR, y2: FLOOR, class: 'floor' }, g);
+      const W = sim.W;
+      svgEl('rect', { x: 0, y: 0, width: W, height: CEIL, class: 'ceil-zone' }, g);
+      ceil = svgEl('line', { x1: 20, x2: W - 20, y1: CEIL, y2: CEIL, class: 'ceil' }, g);
+      svgEl('text', { x: W - 20, y: CEIL - 12, class: 't-sub', 'text-anchor': 'end' }, g)
+        .textContent = M ? 'techo físico' : 'techo físico: la máquina más grande que se puede comprar';
+      svgEl('line', { x1: 20, x2: W - 20, y1: FLOOR, y2: FLOOR, class: 'floor' }, g);
     };
 
     const sync = () => {
@@ -164,14 +173,15 @@
     // tamaño y capacidad del nodo según el escalón
     const apply = (k, animate) => {
       const st = steps[k], s = sim.servers[0];
-      s.name = st.spec;
-      s.status = `capacidad ×${st.cap} · costo ×${st.cost}`;
+      s.name = M ? `${st.label} vCPU` : st.spec;
+      s.status = M ? `cap ×${st.cap} · costo ×${st.cost}` : `capacidad ×${st.cap} · costo ×${st.cost}`;
       s.capacity = BASE.capacity * st.cap;
       ch.data.labels.push(st.label);
       ch.data.datasets[0].data.push(st.cap);
       ch.data.datasets[1].data.push(st.cost);
       ch.update();
-      const target = { hw: st.w / 2, hh: st.h / 2, y: FLOOR - st.h / 2 };
+      const hh = G.hh(st.h);
+      const target = { hw: G.hw(st.w), hh, y: FLOOR - hh };
       if (animate) gsap.to(s, Object.assign({ duration: 1, ease: 'elastic.out(1, 0.55)' }, target));
       else Object.assign(s, target);
       sync();
@@ -183,9 +193,10 @@
       range.value = BASE.rate;
       sim.reset(Object.assign({}, BASE));
       decorate();
-      sim.servers[0].x = 560;
+      sim.servers[0].x = G.X;
       const c = sim.clients[0];
-      c.y = 430;
+      if (G.cx != null) c.x = G.cx;
+      c.y = G.cy;
       c.view.g.setAttribute('transform', `translate(${c.x},${c.y})`);
       ch.data.labels = []; ch.data.datasets.forEach(d => { d.data = []; });
       apply(0, false);
@@ -199,14 +210,14 @@
       if (i >= steps.length - 1) {
         ceil.classList.add('hit');
         gsap.fromTo(s, { hh: s.hh + 12, y: s.y - 12 }, { hh: s.hh, y: s.y, duration: 0.8, ease: 'elastic.out(1, 0.3)' });
-        sim.banner('🚫 No existe una máquina más grande (y sigue siendo un solo nodo)', C.err);
+        sim.banner(M ? '🚫 No hay máquina más grande' : '🚫 No existe una máquina más grande (y sigue siendo un solo nodo)', C.err);
         return;
       }
       busy = true;
       const gen = sim.gen;
       i++;
       // redimensionar una VM implica apagarla: los requests fallan mientras reinicia
-      s.status = '⏻ reiniciando para redimensionar…';
+      s.status = M ? '⏻ reiniciando…' : '⏻ reiniciando para redimensionar…';
       sim.setUp(s, false);
       sim.clock.animate(1.6, p => { s.progress = p; });
       await sim.clock.wait(1.6);
@@ -353,7 +364,9 @@
 
   S.lbha = slide => {
     const svg = slide.querySelector('svg.sim');
-    svg.setAttribute('viewBox', '0 0 900 590');
+    // en celular: usuarios arriba, los dos LBs lado a lado y los servidores abajo
+    const M = NetKit.MOBILE;
+    svg.setAttribute('viewBox', `0 0 ${NetKit.W} ${NetKit.H}`);
     svg.classList.add('netsim');
     const stripEl = slide.querySelector('.strip');
     const clock = new Clock();
@@ -375,10 +388,11 @@
 
     const move = (pk, a, b, done, dur = 0.45) => {
       clock.animate(dur, p => {
-        const P = cubic(edge(a, b), edge(b, a), p);
+        const P = cubic(edge(a, b, M), edge(b, a, M), p, M);
         pk.setAttribute('cx', P.x); pk.setAttribute('cy', P.y);
       }, done);
     };
+    const link = (a, b) => curve(edge(a, b, M), edge(b, a, M), M);
     const path = (pk, nodes, done) => {
       if (nodes.length < 2) { done && done(); return; }
       move(pk, nodes[0], nodes[1], () => path(pk, nodes.slice(1), done));
@@ -403,22 +417,25 @@
         gL: svgEl('g', {}, svg), gN: svgEl('g', {}, svg), gP: svgEl('g', {}, svg), gT: svgEl('g', {}, svg),
         rr: 0, links: [], missed: 0, ok: 0, err: 0
       };
-      const client = { x: 80, y: 295, hw: 46, hh: 27 };
-      const A = { x: 380, y: mode === 'ha' ? 165 : 295, hw: 74, hh: 42, up: true };
-      const B = mode === 'ha' ? { x: 380, y: 425, hw: 74, hh: 42, up: true } : null;
-      const servers = [0, 1, 2].map(i => ({ x: 740, y: 130 + i * 165, hw: 82, hh: 34 }));
+      const ha = mode === 'ha';
+      const client = M ? { x: 200, y: 40, hw: 56, hh: 24 } : { x: 80, y: 295, hw: 46, hh: 27 };
+      const A = M ? { x: ha ? 110 : 200, y: 170, hw: 72, hh: 36, up: true } : { x: 380, y: ha ? 165 : 295, hw: 74, hh: 42, up: true };
+      const B = !ha ? null : M ? { x: 290, y: 170, hw: 72, hh: 36, up: true } : { x: 380, y: 425, hw: 74, hh: 42, up: true };
+      const servers = [0, 1, 2].map(i => (M ? { x: 70 + i * 130, y: 360, hw: 56, hh: 30 } : { x: 740, y: 130 + i * 165, hw: 82, hh: 34 }));
       Object.assign(st, { client, A, B, servers, vip: A });
 
       [A, B].filter(Boolean).forEach(lb => {
-        const cl = { lb, el: svgEl('path', { class: 'link', d: curve(edge(client, lb), edge(lb, client)) }, st.gL) };
-        st.links.push(cl);
-        servers.forEach(s => st.links.push({ lb, el: svgEl('path', { class: 'link', d: curve(edge(lb, s), edge(s, lb)) }, st.gL) }));
+        st.links.push({ lb, el: svgEl('path', { class: 'link', d: link(client, lb) }, st.gL) });
+        servers.forEach(s => st.links.push({ lb, el: svgEl('path', { class: 'link', d: link(lb, s) }, st.gL) }));
       });
-      if (B) st.hbLine = svgEl('path', { class: 'link hb', d: `M${A.x},${A.y + A.hh} L${B.x},${B.y - B.hh}` }, st.gL);
+      if (B) {
+        const e1 = edge(A, B), e2 = edge(B, A);
+        st.hbLine = svgEl('path', { class: 'link hb', d: `M${e1.x},${e1.y} L${e2.x},${e2.y}` }, st.gL);
+      }
 
       const cg = svgEl('g', { class: 'client', transform: `translate(${client.x},${client.y})` }, st.gN);
       cg.style.setProperty('--c', '#7dd3fc');
-      svgEl('rect', { class: 'node-box', x: -46, y: -27, width: 92, height: 54, rx: 10 }, cg);
+      svgEl('rect', { class: 'node-box', x: -client.hw, y: -client.hh, width: client.hw * 2, height: client.hh * 2, rx: 10 }, cg);
       svgEl('text', { x: -28, y: 7, class: 't-emoji', 'text-anchor': 'middle' }, cg).textContent = '👥';
       svgEl('text', { x: -12, y: 5, class: 't-title small' }, cg).textContent = 'Usuarios';
 
@@ -430,7 +447,7 @@
       st.vipG = svgEl('g', { class: 'vip', transform: `translate(${p.x},${p.y})` }, st.gT);
       svgEl('rect', { x: -58, y: -15, width: 116, height: 30, rx: 15 }, st.vipG);
       svgEl('text', { x: 0, y: 5, 'text-anchor': 'middle' }, st.vipG).textContent = 'VIP 10.0.0.100';
-      st.hbText = svgEl('text', { x: 392, y: 300, class: 't-hb' }, st.gT);
+      st.hbText = svgEl('text', M ? { x: 200, y: 236, class: 't-hb', 'text-anchor': 'middle' } : { x: 392, y: 300, class: 't-hb' }, st.gT);
 
       refresh();
       clock.every(0.4, spawn);
@@ -470,9 +487,9 @@
         st.hbText.textContent = '♥ heartbeat OK';
         [[active, passive], [passive, active]].forEach(([a, b]) => {
           const pk = svgEl('circle', { r: 4, fill: C.hc, class: 'pk' }, st.gP);
+          const p0 = edge(a, b), p1 = edge(b, a);
           clock.animate(0.35, p => {
-            const y0 = a.y + Math.sign(b.y - a.y) * a.hh, y1 = b.y + Math.sign(a.y - b.y) * b.hh;
-            pk.setAttribute('cx', a.x); pk.setAttribute('cy', y0 + (y1 - y0) * p);
+            pk.setAttribute('cx', p0.x + (p1.x - p0.x) * p); pk.setAttribute('cy', p0.y + (p1.y - p0.y) * p);
           }, () => pk.remove());
         });
         return;

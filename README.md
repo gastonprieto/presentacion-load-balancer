@@ -16,6 +16,10 @@ Doble clic en `index.html`. Funciona offline y sin build: las librerías están 
 | `O` / `Esc` | vista general |
 | `-` / `+` | velocidad de las simulaciones (también con 🐢/🐇 abajo a la izquierda; se recuerda entre sesiones) |
 
+## Celular
+
+En un teléfono se carga automáticamente una versión móvil: las slides quedan una debajo de la otra con scroll, los diagramas son verticales y cada simulación se activa al llegar a ella. Se puede forzar con `?mobile=1` (o desactivar con `?mobile=0`).
+
 ## Estructura
 
 ```

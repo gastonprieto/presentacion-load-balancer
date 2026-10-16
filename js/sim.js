@@ -5,7 +5,9 @@
   'use strict';
 
   const NS = 'http://www.w3.org/2000/svg';
-  const W = 900, H = 590;
+  // En celular (html.mobile) los diagramas son verticales y en un lienzo más angosto
+  const MOBILE = document.documentElement.classList.contains('mobile');
+  const W = MOBILE ? 400 : 900, H = MOBILE ? 440 : 590;
 
   const C = {
     req: '#7dd3fc', ok: '#4ade80', slow: '#facc15', err: '#f87171',
@@ -26,22 +28,31 @@
     return e;
   }
 
-  // Curva cúbica "horizontal" entre a y b (los puntos de control comparten la x media)
-  function cubic(a, b, t) {
-    const mx = (a.x + b.x) / 2, u = 1 - t;
+  // Curva cúbica entre a y b. Horizontal: los puntos de control comparten la x media;
+  // vertical (v = true): comparten la y media.
+  function cubic(a, b, t, v) {
+    const u = 1 - t;
     const k0 = u * u * u, k1 = 3 * u * u * t, k2 = 3 * u * t * t, k3 = t * t * t;
-    return {
-      x: k0 * a.x + (k1 + k2) * mx + k3 * b.x,
-      y: (k0 + k1) * a.y + (k2 + k3) * b.y
-    };
+    if (v) {
+      const my = (a.y + b.y) / 2;
+      return { x: (k0 + k1) * a.x + (k2 + k3) * b.x, y: k0 * a.y + (k1 + k2) * my + k3 * b.y };
+    }
+    const mx = (a.x + b.x) / 2;
+    return { x: k0 * a.x + (k1 + k2) * mx + k3 * b.x, y: (k0 + k1) * a.y + (k2 + k3) * b.y };
   }
-  function curve(a, b) {
+  function curve(a, b, v) {
+    if (v) {
+      const my = (a.y + b.y) / 2;
+      return `M${a.x},${a.y} C${a.x},${my} ${b.x},${my} ${b.x},${b.y}`;
+    }
     const mx = (a.x + b.x) / 2;
     return `M${a.x},${a.y} C${mx},${a.y} ${mx},${b.y} ${b.x},${b.y}`;
   }
-  // Punto del borde del nodo n que mira hacia m
-  function edge(n, m) {
-    if (Math.abs(m.x - n.x) < 1) return { x: n.x, y: n.y + Math.sign(m.y - n.y) * n.hh };
+  // Punto del borde del nodo n que mira hacia m (bordes de arriba/abajo si v = true)
+  function edge(n, m, v) {
+    if (v ? Math.abs(m.y - n.y) >= 1 : Math.abs(m.x - n.x) < 1) {
+      return { x: n.x, y: n.y + Math.sign(m.y - n.y) * n.hh };
+    }
     return { x: n.x + Math.sign(m.x - n.x) * n.hw, y: n.y };
   }
   const ease = p => (p < 0.5 ? 2 * p * p : 1 - Math.pow(-2 * p + 2, 2) / 2) * 0.6 + p * 0.4;
@@ -113,6 +124,8 @@
     healthChecks: false, hcInterval: 1, hcFall: 2,
     weights: null, colorByClient: false, clickToKill: false,
     sessions: null, maxServers: 8, showHandled: true, showVersion: false,
+    // 'h' fuerza el diagrama horizontal también en celular (por defecto ahí es vertical)
+    orient: null,
     // capa de datos detrás de los servidores: { mode: 'single' | 'cache', ... } (ver DB_DEFAULTS)
     db: null
   };
@@ -125,6 +138,7 @@
   class Sim {
     constructor(svg, opts) {
       this.svg = svg;
+      this.W = W; this.H = H;
       svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
       svg.classList.add('netsim');
       this.clock = new Clock();
@@ -141,6 +155,7 @@
 
     reset(opts) {
       if (opts) this.o = Object.assign({}, DEFAULTS, opts);
+      this.v = MOBILE && this.o.orient !== 'h';
       this.gen = (this.gen || 0) + 1;
       this.clock.clear();
       this.svg.innerHTML = '';
@@ -177,12 +192,17 @@
         name: multi ? `C${i + 1}` : 'Usuarios', ip: multi ? `10.0.0.${11 + i * 17}` : 'internet',
         octet: 11 + i * 17, x: 0, y: 0, hw: 46, hh: 27, session: null
       };
+      // vertical con varios clientes: cajas angostas, sin emoji
+      const slim = this.v && multi;
+      if (slim) { c.hw = Math.min(40, W / (this.o.clients + 1) / 2 - 4); c.hh = 22; }
+      else if (MOBILE) c.hw = 56; // en celular la letra es relativamente más grande: «Usuarios» necesita más ancho
       const g = svgEl('g', { class: 'client' }, this.gNodes);
       g.style.setProperty('--c', this.o.colorByClient || multi ? c.color : '#7dd3fc');
       svgEl('rect', { class: 'node-box', x: -c.hw, y: -c.hh, width: c.hw * 2, height: c.hh * 2, rx: 10 }, g);
-      svgEl('text', { x: -c.hw + 18, y: 7, class: 't-emoji', 'text-anchor': 'middle' }, g).textContent = multi ? '💻' : '👥';
-      svgEl('text', { x: -c.hw + 34, y: -2, class: 't-title small' }, g).textContent = c.name;
-      svgEl('text', { x: -c.hw + 34, y: 14, class: 't-sub' }, g).textContent = c.ip;
+      const tx = slim ? -c.hw + 8 : -c.hw + 34;
+      if (!slim) svgEl('text', { x: -c.hw + 18, y: 7, class: 't-emoji', 'text-anchor': 'middle' }, g).textContent = multi ? '💻' : '👥';
+      svgEl('text', { x: tx, y: slim ? -3 : -2, class: 't-title small' }, g).textContent = c.name;
+      svgEl('text', { x: tx, y: slim ? 13 : 14, class: 't-sub' }, g).textContent = c.ip;
       c.view = { g };
       this.clients.push(c);
     }
@@ -206,10 +226,13 @@
 
     _addRedis() {
       const r = { kind: 'redis', x: 818, y: H / 2, hw: 56, hh: 62, sessions: new Set(), sig: '' };
+      // vertical: caja ancha abajo, con las sesiones en fila a la derecha
+      if (this.v) Object.assign(r, { x: W / 2, y: H - 40, hw: 100, hh: 30 });
       const g = svgEl('g', { class: 'redis' }, this.gNodes);
       svgEl('rect', { class: 'node-box', x: -r.hw, y: -r.hh, width: r.hw * 2, height: r.hh * 2, rx: 12 }, g);
-      svgEl('text', { x: 0, y: -r.hh + 22, class: 't-title', 'text-anchor': 'middle' }, g).textContent = 'Redis';
-      svgEl('text', { x: 0, y: -r.hh + 40, class: 't-sub', 'text-anchor': 'middle' }, g).textContent = 'sesiones';
+      const t = this.v ? { x: -r.hw + 14, anchor: 'start', y1: -3, y2: 14 } : { x: 0, anchor: 'middle', y1: -r.hh + 22, y2: -r.hh + 40 };
+      svgEl('text', { x: t.x, y: t.y1, class: 't-title', 'text-anchor': t.anchor }, g).textContent = 'Redis';
+      svgEl('text', { x: t.x, y: t.y2, class: 't-sub', 'text-anchor': t.anchor }, g).textContent = 'sesiones';
       r.view = { g, chips: svgEl('g', {}, g) };
       this.redis = r;
     }
@@ -277,6 +300,7 @@
     }
 
     _layout(animate) {
+      if (this.v) { this._layoutV(animate); return; }
       const n = this.clients.length;
       const clientX = this.lb ? 70 : 120;
       if (this.data) {
@@ -311,6 +335,50 @@
       });
     }
 
+    // Celular: clientes arriba, LB al medio, servidores en filas de hasta 4 y la capa de datos (o Redis) abajo
+    _layoutV(animate) {
+      const n = this.clients.length;
+      this.clients.forEach((c, i) => {
+        c.x = W * (i + 1) / (n + 1); c.y = this.lb ? 36 : 50;
+        c.view.g.setAttribute('transform', `translate(${c.x},${c.y})`);
+      });
+      if (this.lb) {
+        this.lb.x = W / 2; this.lb.y = 128;
+        this.lb.view.g.setAttribute('transform', `translate(${this.lb.x},${this.lb.y})`);
+      }
+      const bottom = this.data || this.redis;
+      if (this.redis) this.redis.view.g.setAttribute('transform', `translate(${this.redis.x},${this.redis.y})`);
+      if (this.data) {
+        const k = this.data.nodes.length;
+        this.data.nodes.forEach((d, i) => {
+          Object.assign(d, { x: W * (i + 1) / (k + 1), y: H - 40, hw: Math.min(84, W / (k + 1) / 2 - 6), hh: 30 });
+        });
+      }
+
+      const m = this.servers.length;
+      const rows = m > 4 ? 2 : 1;
+      const perRow = Math.ceil(m / rows);
+      const top = this.lb ? 200 : 150, bot = bottom ? H - 110 : H - 40;
+      const single = !this.lb && m === 1;
+      const hh = single ? 44 : rows === 2 ? 24 : this.o.sessions ? 40 : 32;
+      const hw = single ? 110 : Math.min(64, W / perRow / 2 - 6);
+      this.servers.forEach((s, i) => {
+        const row = Math.floor(i / perRow), col = i % perRow;
+        const inRow = row === rows - 1 ? m - perRow * (rows - 1) : perRow;
+        const x = W * (col + 0.5) / inRow;
+        const y = rows === 1 ? (top + bot) / 2 : top + (bot - top) * (row === 0 ? 0.22 : 0.78);
+        if (s.fresh) {
+          Object.assign(s, { x, y, hh, hw });
+          s.fresh = false;
+          gsap.to(s, { scale: 1, duration: 0.5, ease: 'back.out(1.7)' });
+        } else if (animate) {
+          gsap.to(s, { x, y, hh, hw, duration: 0.5, ease: 'power2.inOut' });
+        } else {
+          Object.assign(s, { x, y, hh, hw });
+        }
+      });
+    }
+
     _buildLinks() {
       this.gLinks.innerHTML = '';
       this.links = [];
@@ -329,7 +397,7 @@
 
     _frame() {
       for (const l of this.links) {
-        l.el.setAttribute('d', curve(edge(l.a, l.b), edge(l.b, l.a)));
+        l.el.setAttribute('d', curve(edge(l.a, l.b, this.v), edge(l.b, l.a, this.v), this.v));
         if (l.a.kind === 'lb') {
           const s = l.b;
           l.el.classList.toggle('off', !s.healthy || s.draining || s.removing);
@@ -375,19 +443,22 @@
       v.box.setAttribute('width', hw * 2); v.box.setAttribute('height', hh * 2);
 
       const ty = compact ? 5 : -hh + 22;
-      let title = s.name;
-      if (this.o.weights && s.kind === 'server') title += ` · peso ${s.weight}`;
-      if (this.o.showVersion && s.kind === 'server') title += ` · ${s.version}`;
-      v.title.textContent = title;
+      // peso / versión van en el título; en cajas angostas (celular) pasan a la segunda línea
+      const narrow = hw < 70;
+      const extra = [];
+      if (this.o.weights && s.kind === 'server') extra.push(`peso ${s.weight}`);
+      if (this.o.showVersion && s.kind === 'server') extra.push(s.version);
+      v.title.textContent = narrow ? s.name : [s.name, ...extra].join(' · ');
       v.title.setAttribute('x', -hw + 12); v.title.setAttribute('y', ty);
 
       let sub;
-      if (s.status) sub = s.status;
+      if (s.status) sub = narrow ? s.status.replace('desplegando', 'deploy') : s.status;
       else if (!s.up) sub = '✖ caído';
       else if (s.removing) sub = 'retirando…';
-      else if (s.draining) sub = 'drenando conexiones…';
-      else if (!s.healthy) sub = '⚠ fuera de rotación';
+      else if (s.draining) sub = narrow ? 'drenando…' : 'drenando conexiones…';
+      else if (!s.healthy) sub = narrow ? '⚠ fuera' : '⚠ fuera de rotación';
       else if (s.kind === 'db') sub = s.desc;
+      else if (narrow) sub = [...extra, this.o.showHandled ? `✓ ${s.handled}` : ''].filter(Boolean).join(' · ');
       else sub = this.o.showHandled ? `atendidas: ${s.handled}` : '';
 
       const q = s.queue.length;
@@ -405,13 +476,13 @@
       v.prog.setAttribute('x', -hw + 12); v.prog.setAttribute('y', by);
       v.prog.setAttribute('width', s.progress == null ? 0 : bw * s.progress);
 
-      // cola: cuadraditos esperando sobre el link de entrada
-      const qn = Math.min(q, s.kind === 'db' ? 11 : 14);
+      // cola: cuadraditos esperando sobre el link de entrada (en vertical, en fila arriba de la caja)
+      const qn = Math.min(q, this.v ? Math.floor((hw * 2 - 4) / 10) : s.kind === 'db' ? 11 : 14);
       while (v.qg.childElementCount < qn) svgEl('rect', { width: 8, height: 8, rx: 1.5, class: 'qsq' }, v.qg);
       while (v.qg.childElementCount > qn) v.qg.lastChild.remove();
       for (let i = 0; i < qn; i++) {
-        v.qg.children[i].setAttribute('x', -hw - 14 - i * 10);
-        v.qg.children[i].setAttribute('y', -4);
+        v.qg.children[i].setAttribute('x', this.v ? -hw + 2 + i * 10 : -hw - 14 - i * 10);
+        v.qg.children[i].setAttribute('y', this.v ? -hh - 12 : -4);
       }
 
       if (this.o.sessions && !compact) this._drawChips(s, v.chips, false);
@@ -424,8 +495,9 @@
       node.sig = sig;
       g.innerHTML = '';
       list.forEach((c, i) => {
-        const x = grid ? -24 + (i % 3) * 24 : -node.hw + 26 + i * 18;
-        const y = grid ? 6 + Math.floor(i / 3) * 24 : node.hh - 26;
+        // grid = Redis: en vertical las sesiones van en fila a la derecha del título
+        const x = grid ? (this.v ? -6 + i * 22 : -24 + (i % 3) * 24) : -node.hw + 26 + i * 18;
+        const y = grid ? (this.v ? 0 : 6 + Math.floor(i / 3) * 24) : node.hh - 26;
         svgEl('circle', { cx: x, cy: y, r: 6.5, fill: c.color, class: 'chip' }, g);
       });
       if (!grid && list.length) {
@@ -458,7 +530,7 @@
 
     _move(pk, a, b, done, dur) {
       this.clock.animate(dur == null ? this.o.travel : dur, p => {
-        const P = cubic(edge(a, b), edge(b, a), ease(p));
+        const P = cubic(edge(a, b, this.v), edge(b, a, this.v), ease(p), this.v);
         pk.setAttribute('cx', P.x);
         pk.setAttribute('cy', P.y);
       }, done);
@@ -794,11 +866,13 @@
 
     banner(text, color) {
       if (!this._banner) {
+        // en vertical va abajo (arriba están los clientes), salvo que la escena pida bannerTop
+        const by = this.v ? (this.o.bannerTop ? 8 : H - 44) : 12, bh = this.v ? 32 : 40;
         const g = svgEl('g', { class: 'banner', opacity: 0 }, this.gTop);
         this._banner = {
           g,
-          rect: svgEl('rect', { rx: 12, height: 40, y: 12 }, g),
-          text: svgEl('text', { x: W / 2, y: 38, 'text-anchor': 'middle' }, g)
+          rect: svgEl('rect', { rx: 12, height: bh, y: by }, g),
+          text: svgEl('text', { x: W / 2, y: by + (this.v ? 21 : 26), 'text-anchor': 'middle' }, g)
         };
       }
       const b = this._banner;
@@ -807,12 +881,12 @@
       b.text.setAttribute('fill', color || C.text);
       b.rect.setAttribute('stroke', color || C.text);
       let w = 600;
-      try { w = b.text.getComputedTextLength() + 40; } catch (e) { /* slide oculta */ }
+      try { w = Math.min(W - 8, b.text.getComputedTextLength() + 40); } catch (e) { /* slide oculta */ }
       b.rect.setAttribute('x', W / 2 - w / 2);
       b.rect.setAttribute('width', w);
       gsap.fromTo(b.g, { opacity: 0, y: -10 }, { opacity: 1, y: 0, duration: 0.35 });
     }
   }
 
-  window.NetKit = { Speed, Clock, Sim, svgEl, cubic, curve, edge, pop, C, W, H, CLIENT_COLORS };
+  window.NetKit = { MOBILE, Speed, Clock, Sim, svgEl, cubic, curve, edge, pop, C, W, H, CLIENT_COLORS };
 })();

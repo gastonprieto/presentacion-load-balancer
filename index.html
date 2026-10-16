@@ -4,6 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>De un nodo a muchos · Load Balancing</title>
+  <script>
+    // Celular → versión móvil (html.mobile): documento vertical sin reveal.js.
+    // Se puede forzar con ?mobile=1 o ?mobile=0. Las tablets usan la versión de escritorio.
+    (function () {
+      var q = new URLSearchParams(location.search).get('mobile');
+      var phone = /Mobi|iPhone|iPod/i.test(navigator.userAgent) || Math.min(screen.width, screen.height) < 600;
+      if (q === '1' || (q !== '0' && phone)) document.documentElement.classList.add('mobile');
+    })();
+  </script>
   <link rel="stylesheet" href="vendor/reveal/reveal.css">
   <link rel="stylesheet" href="css/theme.css">
 </head>
@@ -19,6 +28,7 @@
     <h1>De <span class="grad">un nodo</span><br>a muchos</h1>
     <p class="sub">Por qué un solo servidor no alcanza y cómo un <b>load balancer</b> lo resuelve.</p>
     <p class="keys"><kbd>→</kbd> avanzar · <kbd>S</kbd> notas del orador · <kbd>F</kbd> pantalla completa · <kbd>O</kbd> vista general</p>
+    <p class="keys-mobile">Deslizá hacia abajo para recorrerla. Las simulaciones se activan al llegar a cada una.</p>
   </div>
   <aside class="notes">
     Bienvenida. Objetivo de la clase: entender qué se rompe cuando todo vive en un solo servidor y cómo un load balancer
