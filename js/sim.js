@@ -113,13 +113,13 @@
     healthChecks: false, hcInterval: 1, hcFall: 2,
     weights: null, colorByClient: false, clickToKill: false,
     sessions: null, maxServers: 8, showHandled: true, showVersion: false,
-    // capa de datos detrás de los servidores: { mode: 'single' | 'cache' | 'replicas', ... } (ver DB_DEFAULTS)
+    // capa de datos detrás de los servidores: { mode: 'single' | 'cache', ... } (ver DB_DEFAULTS)
     db: null
   };
 
   const DB_DEFAULTS = {
     mode: 'single', capacity: 4, queryTime: 0.5, travel: 0.3, queueMax: 40,
-    cacheHit: 0.8, cacheCapacity: 16, cacheTime: 0.06, readRatio: 0.8, replicas: 2
+    cacheHit: 0.8, cacheCapacity: 16, cacheTime: 0.06
   };
 
   class Sim {
@@ -268,16 +268,11 @@
         this._makeView(n);
         return n;
       };
-      const primary = node('DB', 'primary', d.mode === 'replicas' ? 'primaria · escrituras' : 'PostgreSQL', d.capacity, d.queryTime);
-      this.data = { primary, cache: null, replicas: [], rr: 0, nodes: [primary] };
+      const primary = node('DB', 'primary', 'PostgreSQL', d.capacity, d.queryTime);
+      this.data = { primary, cache: null, nodes: [primary] };
       if (d.mode === 'cache') {
         this.data.cache = node('Caché', 'cache', `Redis · hit ${Math.round(d.cacheHit * 100)}%`, d.cacheCapacity, d.cacheTime);
         this.data.nodes = [this.data.cache, primary];
-      } else if (d.mode === 'replicas') {
-        for (let i = 0; i < d.replicas; i++) {
-          this.data.replicas.push(node(`Réplica ${i + 1}`, 'replica', 'solo lecturas', d.capacity, d.queryTime));
-        }
-        this.data.nodes = [primary, ...this.data.replicas];
       }
     }
 
@@ -595,9 +590,8 @@
     }
 
     _pickData() {
-      const { primary, cache, replicas } = this.data;
+      const { primary, cache } = this.data;
       if (cache) return Math.random() < this.db.cacheHit ? cache : primary;
-      if (replicas.length && Math.random() < this.db.readRatio) return replicas[this.data.rr++ % replicas.length];
       return primary;
     }
 

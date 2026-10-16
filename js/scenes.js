@@ -565,7 +565,7 @@
 
   S.dbneck = slide => {
     const APP = 4 / (0.2 + 0.5 + 0.6); // workers / (proceso + consulta + viaje a la DB) ≈ 3 req/s por servidor
-    const dbCap = { single: 8, cache: 40, replicas: 20 };
+    const dbCap = { single: 8, cache: 40 };
     let mode = 'single';
     const opts = () => ({
       servers: 2, rate: 4, capacity: 4, serviceTime: 0.2, serviceJitter: 0.2, queueMax: 8,

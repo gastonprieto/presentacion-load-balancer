@@ -186,7 +186,6 @@ html, body { background: var(--bg); }
 .netsim .srv.down .node-box { fill: #3a1018; stroke: var(--red); }
 .netsim .srv.data .node-box { fill: #0c2a2a; stroke: var(--teal); }
 .netsim .srv.data.cache .node-box { fill: #2a1020; stroke: #fb7185; }
-.netsim .srv.data.replica .node-box { stroke-dasharray: 6 4; }
 .netsim .link.db-link { stroke: #1d4a4a; stroke-width: 1.5; stroke-dasharray: 3 5; }
 .netsim .srv.clickable { cursor: pointer; }
 .netsim .srv.clickable:hover .node-box { stroke-width: 3.5; filter: brightness(1.25); }
