@@ -1,0 +1,596 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>De un nodo a muchos · Load Balancing</title>
+  <link rel="stylesheet" href="vendor/reveal/reveal.css">
+  <link rel="stylesheet" href="css/theme.css">
+</head>
+<body>
+<div class="reveal">
+<div class="slides">
+
+<!-- ============ 1. PORTADA ============ -->
+<section class="title-slide" data-scene="title">
+  <svg class="bg"></svg>
+  <div class="hero">
+    <div class="kicker">Diseño de sistemas · Escalabilidad</div>
+    <h1>De <span class="grad">un nodo</span><br>a muchos</h1>
+    <p class="sub">Por qué un solo servidor no alcanza y cómo un <b>load balancer</b> lo resuelve.</p>
+    <p class="keys"><kbd>→</kbd> avanzar · <kbd>S</kbd> notas del orador · <kbd>F</kbd> pantalla completa · <kbd>O</kbd> vista general</p>
+  </div>
+  <aside class="notes">
+    Bienvenida. Objetivo de la clase: entender qué se rompe cuando todo vive en un solo servidor y cómo un load balancer
+    (y las prácticas que lo acompañan) resuelve cada problema. Casi todas las slides son simulaciones en vivo: los puntos
+    son requests reales de la simulación. Pregunta para la clase: ¿cuántos servidores creen que atienden google.com?
+  </aside>
+</section>
+
+<!-- ============ 2. UN NODO ============ -->
+<section data-scene="single">
+  <div class="kicker">El punto de partida</div>
+  <h2>Un cliente, un servidor</h2>
+  <div class="demo">
+    <div class="stage">
+      <svg class="sim"></svg>
+      <div class="legend"><span><i style="background:#7dd3fc"></i>request</span><span><i style="background:#4ade80"></i>ok</span><span><i style="background:#facc15"></i>lenta</span><span><i style="background:#f87171"></i>error</span></div>
+    </div>
+    <div class="panel">
+      <p class="lead">Así arrancan casi todos los sistemas: <b>toda la app corre en una sola máquina</b>.</p>
+      <ul class="points">
+        <li class="fragment">✅ Simple de desplegar y de razonar</li>
+        <li class="fragment">✅ Barato: una sola VM</li>
+        <li class="fragment">✅ Sin coordinación entre nodos</li>
+        <li class="fragment">⚠️ …pero <b>todo</b> depende de esa máquina</li>
+      </ul>
+      <div class="spacer"></div>
+      <div class="box">
+        <div class="label">Cómo leer el servidor</div>
+        <p style="font-size:14px;color:#94a3b8;line-height:1.5"><code>2/4</code> = requests en proceso / capacidad (workers).<br>La barra es la carga. Los cuadraditos naranjas a la izquierda son la <b>cola</b>.</p>
+      </div>
+      <div class="stats" data-fields="sent,ok,p95"></div>
+    </div>
+  </div>
+  <aside class="notes">
+    Explicar la leyenda: los círculos celestes son requests, al volver se pintan según el resultado.
+    El servidor tiene 4 "workers": puede procesar 4 requests al mismo tiempo. Si llegan más, esperan en cola.
+    Esto está perfecto para un MVP. Pregunta: ¿qué podría salir mal con este diseño? Dejar que propongan antes de avanzar.
+  </aside>
+</section>
+
+<!-- ============ 3. SPOF ============ -->
+<section data-scene="spof">
+  <div class="kicker red">Problema 1</div>
+  <h2>Single Point of Failure</h2>
+  <div class="demo">
+    <div class="stage"><svg class="sim"></svg></div>
+    <div class="panel">
+      <p class="lead">Si ese servidor cae (falla de hardware, kernel panic, OOM, un <code>rm -rf</code>…), <b>cae todo el sistema</b>.</p>
+      <div class="actions">
+        <button class="btn danger" data-act="kill">💥 Tirar el servidor</button>
+        <button class="btn success" data-act="revive">↺ Levantarlo</button>
+      </div>
+      <ul class="points">
+        <li class="fragment">Disponibilidad del sistema = disponibilidad de <b>esa</b> máquina</li>
+        <li class="fragment">99,9% ≈ <b>8,7 h</b> caído por año</li>
+        <li class="fragment">No hay a quién derivarle el tráfico</li>
+      </ul>
+      <div class="spacer"></div>
+      <div class="box strip-box"><div class="label">Disponibilidad · últimos 40 s</div><div class="strip"></div></div>
+      <div class="stats" data-fields="sent,ok,err"></div>
+    </div>
+  </div>
+  <aside class="notes">
+    Apretar "Tirar el servidor": todos los requests vuelven en rojo (connection refused / timeout).
+    Mirar la barra de disponibilidad: pasa de verde a rojo. Levantarlo de nuevo.
+    Dato: 99,9% de uptime implica casi 9 horas de caída al año; 99,99% son 52 minutos. Con un solo nodo es muy difícil
+    pasar de tres nueves porque cualquier mantenimiento también es caída.
+    Pregunta: ¿cuánto le cuesta a una tienda online una hora caída en Black Friday?
+  </aside>
+</section>
+
+<!-- ============ 4. SATURACIÓN ============ -->
+<section data-scene="saturation">
+  <div class="kicker red">Problema 2</div>
+  <h2>Saturación ante picos de tráfico</h2>
+  <div class="demo">
+    <div class="stage"><svg class="sim"></svg></div>
+    <div class="panel">
+      <p class="lead">4 workers × ~0,8 s por request → capacidad máxima ≈ <b>5 req/s</b>.</p>
+      <div class="box">
+        <div class="label">Tráfico entrante</div>
+        <div class="slider-row"><input type="range" min="1" max="20" step="1" value="2"><span class="rate-out">2 req/s</span></div>
+        <div class="slider-row" style="margin-top:6px;font-size:14px;color:#94a3b8">Utilización: <span class="util-out ok">40%</span>
+          <span style="flex:1"></span><button class="btn ghost" data-act="reset" style="padding:4px 10px;font-size:13px">↺ reset</button></div>
+      </div>
+      <div class="chart-box"><canvas class="chart"></canvas></div>
+      <div class="stats"></div>
+      <ul class="points">
+        <li class="fragment">Por encima de la capacidad, la <b>cola crece</b> → la latencia se dispara</li>
+        <li class="fragment">Cola llena → <code>503 Service Unavailable</code></li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Subir el slider de a poco: 3, 4 (80%), 5 (100%), 8, 12. Mostrar que la latencia no crece lineal: cerca del 100% de
+    utilización explota (teoría de colas). Ley de Little: requests en el sistema = tasa de llegada × tiempo en el sistema.
+    Con la cola llena el servidor empieza a rechazar con 503. Notar que el servidor no está "roto", está saturado.
+    Pregunta: ¿qué harían para aguantar 20 req/s? (respuesta esperada: una máquina más grande → próxima slide).
+  </aside>
+</section>
+
+<!-- ============ 5. ESCALADO VERTICAL ============ -->
+<section data-scene="vertical">
+  <div class="kicker red">Problema 3</div>
+  <h2>Escalar verticalmente tiene techo</h2>
+  <div class="demo">
+    <div class="stage"><svg class="sim"></svg></div>
+    <div class="panel">
+      <p class="lead">La respuesta natural: <b>«comprar una máquina más grande»</b> (scale up).</p>
+      <div class="actions">
+        <button class="btn primary" data-act="up">⬆ Escalar verticalmente</button>
+        <button class="btn ghost" data-act="reset">↺</button>
+      </div>
+      <div class="chart-box tall"><canvas class="chart"></canvas></div>
+      <ul class="points">
+        <li class="fragment">💸 El costo crece <b>mucho más rápido</b> que la capacidad</li>
+        <li class="fragment">⏻ Cada salto requiere reiniciar → downtime</li>
+        <li class="fragment">🧱 Hay un techo físico</li>
+        <li class="fragment">☝️ Y sigue siendo <b>un solo nodo</b>: el SPOF no se fue</li>
+      </ul>
+      <p style="font-size:12px;color:#64748b">Valores ilustrativos.</p>
+    </div>
+  </div>
+  <aside class="notes">
+    Apretar "Escalar" varias veces. Cada salto: la VM se apaga para redimensionarla (downtime) y vuelve más grande.
+    Mirar el gráfico: la capacidad (barras) crece cada vez menos (rendimientos decrecientes: más cores no escalan lineal
+    por locks, memoria compartida, GC…), mientras el costo (línea roja) se dispara. Al final se choca contra el techo.
+    Aclarar que escalar vertical no está mal: es lo primero que conviene probar (es simple). El problema es depender solo de eso.
+  </aside>
+</section>
+
+<!-- ============ 6. DEPLOY CON DOWNTIME ============ -->
+<section data-scene="deploy">
+  <div class="kicker red">Problema 4</div>
+  <h2>Cada deploy es una caída</h2>
+  <div class="demo">
+    <div class="stage"><svg class="sim"></svg></div>
+    <div class="panel">
+      <p class="lead">Para actualizar hay que <b>detener el proceso</b>. Mientras arranca la versión nueva, nadie atiende.</p>
+      <div class="actions">
+        <button class="btn primary" data-act="deploy">🚀 Deploy nueva versión</button>
+        <button class="btn ghost" data-act="reset">↺</button>
+      </div>
+      <ul class="points">
+        <li class="fragment">Los requests en curso se cortan</li>
+        <li class="fragment">Se termina deployando de noche o "en ventana de mantenimiento"</li>
+        <li class="fragment">Menos deploys → cambios más grandes → <b>más riesgo</b></li>
+      </ul>
+      <div class="spacer"></div>
+      <div class="box strip-box"><div class="label">Disponibilidad · últimos 40 s</div><div class="strip"></div></div>
+      <div class="stats" data-fields="sent,ok,err"></div>
+    </div>
+  </div>
+  <aside class="notes">
+    Apretar "Deploy": el servidor pasa a amarillo (desplegando) durante 4 s y todo request en ese período falla.
+    Los que estaban en proceso también se pierden. Mostrar la franja roja en la barra de disponibilidad.
+    Remarcar el círculo vicioso: como deployar duele, se deploya poco, los cambios se acumulan y cada deploy es más riesgoso.
+  </aside>
+</section>
+
+<!-- ============ 7. ESCALADO HORIZONTAL ============ -->
+<section data-scene="idea">
+  <div class="kicker green">La solución</div>
+  <h2>Escalado horizontal + Load Balancer</h2>
+  <div class="demo">
+    <div class="stage"><svg class="sim"></svg></div>
+    <div class="panel">
+      <p class="lead">En vez de una máquina más grande, <b>muchas máquinas iguales</b>. El LB es el único punto de entrada y reparte el tráfico.</p>
+      <div class="actions">
+        <button class="btn primary" data-act="add">＋ Servidor</button>
+        <button class="btn" data-act="remove">－ Servidor</button>
+        <button class="btn ghost" data-act="reset">↺</button>
+      </div>
+      <div class="srv-out"></div>
+      <div class="chart-box"><canvas class="chart"></canvas></div>
+      <div class="stats"></div>
+      <ul class="points">
+        <li class="fragment">El cliente solo conoce la IP del LB</li>
+        <li class="fragment">Capacidad ≈ N × capacidad de un nodo</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Arranca con 1 servidor y 8 req/s: saturado (cola, latencia, 503). Agregar un servidor: la latencia baja.
+    Agregar un tercero: holgura. Quitar uno: el servidor se retira "con gracia" (termina lo que tiene antes de irse).
+    Esto es scale out. Requisito clave: los servidores tienen que ser intercambiables (lo vemos en "sesiones").
+    Pregunta: ¿cómo decide el LB a cuál mandar cada request? → algoritmos.
+  </aside>
+</section>
+
+<!-- ============ 8. ROUND ROBIN ============ -->
+<section data-scene="rr">
+  <div class="kicker purple">Algoritmos · 1</div>
+  <h2>Round Robin</h2>
+  <div class="demo">
+    <div class="stage"><svg class="sim"></svg></div>
+    <div class="panel">
+      <p class="lead">Por turnos: 1→S1, 2→S2, 3→S3, 4→S1…</p>
+      <div class="actions">
+        <button class="btn" data-act="add">＋ Servidor</button>
+        <button class="btn" data-act="remove">－ Servidor</button>
+        <button class="btn ghost" data-act="reset">↺</button>
+      </div>
+      <ul class="points">
+        <li class="fragment">✅ Trivial de implementar, casi sin estado</li>
+        <li class="fragment">✅ Reparto parejo si los requests y los servidores son parecidos</li>
+        <li class="fragment">⚠️ No mira cuán ocupado está cada servidor</li>
+        <li class="fragment">⚠️ Requests muy dispares → servidores desbalanceados</li>
+      </ul>
+      <div class="spacer"></div>
+      <div class="box"><div class="label">Pseudocódigo</div>
+        <p style="font:14px/1.6 var(--mono);color:#cbd5e1">i = (i + 1) % N<br>return servers[i]</p></div>
+    </div>
+  </div>
+  <aside class="notes">
+    Mirar el label "próximo → Sx" del LB y los contadores "atendidas": quedan casi iguales.
+    Es el default de Nginx y de muchos LB. Funciona bien cuando todos los requests cuestan parecido.
+    Pregunta: ¿qué pasa si un request tarda 10 veces más que los demás? → Least Connections.
+  </aside>
+</section>
+
+<!-- ============ 9. LEAST CONNECTIONS ============ -->
+<section data-scene="lc">
+  <div class="kicker purple">Algoritmos · 2</div>
+  <h2>Least Connections</h2>
+  <div class="demo">
+    <div class="stage">
+      <svg class="sim"></svg>
+      <div class="hint">● grande = request pesado (8× más lento)</div>
+    </div>
+    <div class="panel">
+      <p class="lead">El LB elige el servidor con <b>menos conexiones activas</b>.</p>
+      <div class="seg" data-group="algo">
+        <button data-v="rr" class="active">Round Robin</button>
+        <button data-v="lc">Least Connections</button>
+      </div>
+      <div class="chart-box"><canvas class="chart"></canvas></div>
+      <div class="stats"></div>
+      <ul class="points">
+        <li class="fragment">Compará la <b>latencia p95</b> con cada algoritmo</li>
+        <li class="fragment">Ideal cuando la duración varía mucho: uploads, reportes, websockets</li>
+        <li class="fragment">Costo: el LB tiene que llevar la cuenta de conexiones</li>
+      </ul>
+    </div>
+  </div>
+  <aside class="notes">
+    Dejar correr unos segundos con Round Robin: cuando dos requests pesados caen en el mismo servidor se forma cola
+    (cuadraditos naranjas) mientras otros están libres. Cambiar a Least Connections: la cola casi desaparece y la p95 baja.
+    Explicar p95: el 95% de los requests tarda menos que eso; es lo que sienten los usuarios "con mala suerte".
+    Variante: "least response time" (Nginx Plus, Envoy) y "power of two choices" (elegir 2 al azar y quedarse con el menos cargado).
+  </aside>
+</section>
+
+<!-- ============ 10. IP HASH / WEIGHTED ============ -->
+<section data-scene="hash">
+  <div class="kicker purple">Algoritmos · 3</div>
+  <h2>IP Hash y Weighted</h2>
+  <div class="demo">
+    <div class="stage"><svg class="sim"></svg></div>
+    <div class="panel">
+      <div class="seg" data-group="mode">
+        <button data-v="iphash" class="active">IP Hash</button>
+        <button data-v="weighted">Weighted</button>
+      </div>
+      <div data-mode="iphash">
+        <p class="lead"><code>servidor = hash(IP) mod N</code>: el mismo cliente <b>siempre</b> cae en el mismo servidor (mirá los colores).</p>
+        <div class="actions" style="margin-top:12px">
+          <button class="btn" data-act="add">＋ Servidor</button>
+          <button class="btn" data-act="remove">－ Servidor</button>
+        </div>
+        <ul class="points" style="margin-top:12px">
+          <li>✅ Afinidad: aprovecha cachés locales</li>
+          <li>⚠️ Si cambia N, cambia el mapeo de <b>casi todos</b> los clientes</li>
+          <li>💡 Por eso existe el <b>consistent hashing</b>: al agregar un nodo solo se mueve ~1/N de las claves</li>
+          <li>⚠️ Muchos usuarios detrás de una misma IP (NAT) → desbalance</li>
+        </ul>
+      </div>
+      <div data-mode="weighted">
+        <p class="lead">Servidores de <b>distinto tamaño</b>: S1 tiene peso 3, así que recibe 3 de cada 5 requests.</p>
+        <ul class="points" style="margin-top:12px">
+          <li>✅ Mezclar máquinas viejas y nuevas</li>
+          <li>✅ <b>Canary</b>: mandar 5% del tráfico a la versión nueva</li>
+          <li>Mirá los contadores "atendidas": ~60% / 20% / 20%</li>
+        </ul>
+        <div class="box" style="margin-top:12px"><div class="label">Smooth weighted RR (Nginx)</div>
+          <p style="font:13px/1.6 var(--mono);color:#cbd5e1">pesos 3,1,1 → S1 S1 S2 S1 S3 …</p></div>
+      </div>
+    </div>
+  </div>
+  <aside class="notes">
+    IP Hash: cada cliente tiene un color; sus requests siempre van al mismo servidor. Agregar un servidor (N pasa de 3 a 4) y
+    ver cómo casi todos los clientes cambian de servidor: si cada servidor tenía datos cacheados de "sus" clientes, se pierden.
+    Consistent hashing (anillo de hash) minimiza esa reasignación: lo usan Cassandra, DynamoDB y los CDN.
+    Weighted: útil con hardware heterogéneo y para canary releases.
+  </aside>
+</section>
+
+<!-- ============ 11. HEALTH CHECKS ============ -->
+<section data-scene="health">
+  <div class="kicker green">Resiliencia</div>
+  <h2>Health checks</h2>
+  <div class="demo">
+    <div class="stage">
+      <svg class="sim"></svg>
+      <div class="hint">👆 clic en un servidor para tirarlo / levantarlo</div>
+    </div>
+    <div class="panel">
+      <p class="lead">El LB consulta periódicamente <code>GET /health</code> a cada servidor. Si falla <b>N veces seguidas</b>, lo saca de la rotación.</p>
+      <div class="seg" data-group="hc">
+        <button data-v="off" class="active">Health checks OFF</button>
+        <button data-v="on">ON ♥</button>
+      </div>
+      <div class="actions"><button class="btn ghost" data-act="revive">↺ Levantar todos</button></div>
+      <ul class="points">
+        <li class="fragment">Sin health checks el LB sigue mandando tráfico a un nodo muerto → 502</li>
+        <li class="fragment">Con health checks: detecta, saca, y cuando vuelve <b>lo reincorpora</b></li>
+        <li class="fragment">Trade-off: chequear seguido detecta antes, pero carga más</li>
+      </ul>
+      <div class="spacer"></div>
+      <div class="box strip-box"><div class="label">Disponibilidad · últimos 40 s</div><div class="strip"></div></div>
+      <div class="stats" data-fields="sent,ok,err"></div>
+    </div>
+  </div>
+  <aside class="notes">
+    Primero con health checks OFF: tirar S2 haciendo clic. Un tercio de los requests falla (502) para siempre, porque el
+    LB no se entera. Levantar todos, prender health checks (los puntos violetas son los pings) y tirar S2 de nuevo:
+    tras 2 chequeos fallidos lo marca "unhealthy", el link se pone punteado y el tráfico se reparte entre los otros dos.
+    Hay algunos errores durante la ventana de detección: es inevitable y depende del intervalo.
+    Diferenciar liveness (¿el proceso vive?) de readiness (¿puede atender: DB conectada, caché caliente?).
+  </aside>
+</section>
+
+<!-- ============ 12. SESIONES ============ -->
+<section data-scene="sessions">
+  <div class="kicker purple">Estado</div>
+  <h2>¿Dónde vive la sesión?</h2>
+  <div class="demo">
+    <div class="stage">
+      <svg class="sim"></svg>
+      <div class="hint">🔑 = sesiones guardadas · clic en un servidor para tirarlo</div>
+    </div>
+    <div class="panel">
+      <div class="seg" data-group="mode">
+        <button data-v="local" class="active">En memoria</button>
+        <button data-v="sticky">Sticky</button>
+        <button data-v="shared">Redis</button>
+      </div>
+      <div data-mode="local">
+        <p class="lead">Cada servidor guarda la sesión <b>en su memoria</b>. El LB reparte por turnos…</p>
+        <ul class="points" style="margin-top:12px">
+          <li>…y el siguiente request cae en otro servidor que no conoce al usuario → <code>401</code></li>
+          <li>El usuario "se desloguea" a cada rato</li>
+        </ul>
+      </div>
+      <div data-mode="sticky">
+        <p class="lead"><b>Sticky sessions</b>: el LB recuerda a qué servidor fue cada cliente (cookie) y lo manda siempre ahí.</p>
+        <ul class="points" style="margin-top:12px">
+          <li>✅ Funciona sin cambiar la app</li>
+          <li>⚠️ Si ese servidor cae, se pierden sus sesiones (probá tirarlo)</li>
+          <li>⚠️ Carga despareja y escalar es más difícil</li>
+        </ul>
+      </div>
+      <div data-mode="shared">
+        <p class="lead">Servidores <b>stateless</b>: la sesión vive en un store compartido (Redis, DB, o un JWT en el cliente).</p>
+        <ul class="points" style="margin-top:12px">
+          <li>✅ Cualquier servidor atiende a cualquier usuario</li>
+          <li>✅ Tirar un servidor no desloguea a nadie</li>
+          <li>⚠️ Redis pasa a ser una dependencia crítica (se replica)</li>
+        </ul>
+      </div>
+      <div class="spacer"></div>
+      <div class="stats" data-fields="sent,ok,err"></div>
+    </div>
+  </div>
+  <aside class="notes">
+    "En memoria": cada color es un usuario; la primera vez se loguea y la sesión (🔑) queda en ese servidor. El siguiente
+    request va a otro por round robin y vuelve 401. Malísimo.
+    "Sticky": el LB fija a cada cliente con un servidor. Funciona, pero tirar un servidor (clic) les borra la sesión a sus usuarios.
+    "Redis": los servidores consultan un store compartido (puntos rosas). Tirar cualquiera no afecta las sesiones.
+    Conclusión: para escalar horizontal, los servidores tienen que ser stateless. Mencionar JWT como alternativa sin store.
+  </aside>
+</section>
+
+<!-- ============ 13. L4 vs L7 ============ -->
+<section>
+  <div class="kicker purple">Tipos de load balancer</div>
+  <h2>Capa 4 vs. Capa 7</h2>
+  <div class="compare">
+    <div class="layer-card l4">
+      <h3>L4 <small>transporte · TCP/UDP</small></h3>
+      <div class="packet">
+        <div class="tag">lo que ve el LB</div>
+        <span class="seen">src 203.0.113.7:51522</span> → <span class="seen">dst 10.0.0.5:443</span><br>
+        <span class="blur">GET /api/orders HTTP/1.1 Cookie: session=…</span> 🔒
+      </div>
+      <ul>
+        <li class="fragment">Decide solo por <b>IP y puerto</b>: no abre el contenido</li>
+        <li class="fragment">Muy rápido y barato, millones de conexiones</li>
+        <li class="fragment">Sirve para cualquier protocolo (DB, MQTT, gRPC…)</li>
+        <li class="fragment">No puede rutear por URL ni cookies</li>
+      </ul>
+      <div class="ex">Ej.: AWS NLB · HAProxy (mode tcp) · LVS · Maglev</div>
+    </div>
+    <div class="layer-card l7">
+      <h3>L7 <small>aplicación · HTTP</small></h3>
+      <div class="packet">
+        <div class="tag">lo que ve el LB (termina TLS)</div>
+        <span class="seen">GET /api/orders</span> HTTP/1.1<br>
+        <span class="seen">Host: shop.com</span><br>
+        <span class="seen">Cookie: session=abc123</span>
+      </div>
+      <div class="rules">
+        <span>/api/*</span> → pool API<br>
+        <span>/static/*</span> → pool estáticos / CDN<br>
+        <span>Host: admin.*</span> → pool admin
+      </div>
+      <ul>
+        <li class="fragment">Rutea por <b>path, headers, cookies</b></li>
+        <li class="fragment">Termina TLS, reintenta, comprime, aplica rate limiting</li>
+        <li class="fragment">Más CPU por request</li>
+      </ul>
+      <div class="ex">Ej.: AWS ALB · Nginx · Envoy · Traefik · HAProxy (mode http)</div>
+    </div>
+  </div>
+  <aside class="notes">
+    L4 trabaja con conexiones TCP: ve IPs y puertos y no entiende HTTP; con TLS ni siquiera podría leer el contenido.
+    L7 termina la conexión, lee el request HTTP y puede tomar decisiones inteligentes (microservicios por path, A/B por header,
+    sticky por cookie). Es común combinarlos: un L4 adelante (alto throughput) y varios L7 detrás.
+    Pregunta: ¿qué tipo necesitan para mandar /api a un servicio y /img a otro? (L7).
+  </aside>
+</section>
+
+<!-- ============ 14. LB COMO SPOF ============ -->
+<section data-scene="lbha">
+  <div class="kicker red">¿Y si se cae el LB?</div>
+  <h2>El load balancer como nuevo SPOF</h2>
+  <div class="demo">
+    <div class="stage"><svg class="sim"></svg></div>
+    <div class="panel">
+      <div class="seg" data-group="mode">
+        <button data-v="single">1 LB</button>
+        <button data-v="ha" class="active">Activo-pasivo</button>
+      </div>
+      <div class="actions">
+        <button class="btn danger" data-act="kill">💥 Tirar LB activo</button>
+        <button class="btn ghost" data-act="reset">↺</button>
+      </div>
+      <ul class="points">
+        <li class="fragment">Dos LBs comparten una <b>IP virtual (VIP)</b></li>
+        <li class="fragment">Se mandan <b>heartbeats</b>; si el pasivo deja de recibirlos, toma la VIP (VRRP / keepalived)</li>
+        <li class="fragment">En la nube: el LB gestionado (AWS ELB, GCP LB) ya es redundante por diseño</li>
+        <li class="fragment">A escala global: DNS con varias IPs / anycast</li>
+      </ul>
+      <div class="spacer"></div>
+      <div class="box strip-box"><div class="label">Disponibilidad · últimos 40 s</div><div class="strip"></div></div>
+    </div>
+  </div>
+  <aside class="notes">
+    Empezar en "1 LB" y tirarlo: aunque haya 3 servidores sanos, nada entra. Resolvimos el SPOF del servidor y creamos otro.
+    Pasar a "Activo-pasivo": los puntos violetas entre LB-A y LB-B son heartbeats. Tirar el activo: el pasivo cuenta 3
+    heartbeats perdidos y toma la VIP (la etiqueta amarilla se mueve). Hay ~1,5 s de errores durante el failover.
+    Los clientes no cambian nada porque siguen usando la misma IP. Así funcionan keepalived/VRRP.
+  </aside>
+</section>
+
+<!-- ============ 15. ROLLING DEPLOY ============ -->
+<section data-scene="rolling">
+  <div class="kicker green">Problema 4, resuelto</div>
+  <h2>Rolling deploy: cero downtime</h2>
+  <div class="demo">
+    <div class="stage"><svg class="sim"></svg></div>
+    <div class="panel">
+      <div class="actions">
+        <button class="btn success" data-act="rolling">🔁 Rolling deploy</button>
+        <button class="btn danger" data-act="bigbang">💥 Todos a la vez</button>
+        <button class="btn ghost" data-act="reset">↺</button>
+      </div>
+      <ol class="points" style="padding-left:20px;list-style:decimal">
+        <li class="fragment">Sacar un servidor de la rotación (<b>drain</b>)</li>
+        <li class="fragment">Esperar que termine sus requests en curso</li>
+        <li class="fragment">Desplegar la versión nueva</li>
+        <li class="fragment">Esperar health check OK → vuelve a rotación</li>
+        <li class="fragment">Repetir con el siguiente</li>
+      </ol>
+      <p class="fragment" style="font-size:15px;color:#94a3b8">Variantes: <b>blue/green</b> (dos entornos completos y se cambia el LB) y <b>canary</b> (un % del tráfico primero).</p>
+      <div class="spacer"></div>
+      <div class="box strip-box"><div class="label">Disponibilidad · últimos 40 s</div><div class="strip"></div></div>
+      <div class="stats" data-fields="sent,ok,err"></div>
+    </div>
+  </div>
+  <aside class="notes">
+    Apretar "Rolling deploy": cada servidor pasa a drenando (borde punteado amarillo), termina lo suyo, se despliega,
+    vuelve en verde agua (v2) y recién entonces sigue el próximo. El contador de errores no se mueve.
+    Comparar con "Todos a la vez": vuelve el problema de la slide 6.
+    Requisito: la versión vieja y la nueva conviven unos minutos, así que la API y el esquema de DB tienen que ser compatibles hacia atrás.
+    Es lo que hace Kubernetes por defecto con un Deployment (maxUnavailable / maxSurge).
+  </aside>
+</section>
+
+<!-- ============ 16. PLAYGROUND ============ -->
+<section data-scene="playground">
+  <div class="kicker green">Tu turno</div>
+  <h2>Playground</h2>
+  <div class="demo">
+    <div class="stage">
+      <svg class="sim"></svg>
+      <div class="hint">👆 clic en un servidor para tirarlo / levantarlo</div>
+    </div>
+    <div class="panel" style="gap:8px">
+      <div class="box">
+        <div class="label">Tráfico</div>
+        <div class="slider-row"><input type="range" min="1" max="40" step="1" value="6"><span class="rate-out">6 req/s</span></div>
+      </div>
+      <div class="box" style="display:flex;flex-direction:column;gap:8px">
+        <div class="field"><span>Servidores</span>
+          <span class="actions"><button class="btn icon" data-act="remove">－</button><button class="btn icon" data-act="add">＋</button></span></div>
+        <div class="srv-out"></div>
+        <div class="field"><span>Algoritmo</span>
+          <select>
+            <option value="rr">Round Robin</option>
+            <option value="lc">Least Connections</option>
+            <option value="random">Random</option>
+            <option value="iphash">IP Hash</option>
+          </select></div>
+        <label class="field"><span>Health checks</span><input type="checkbox" name="hc" checked></label>
+        <label class="field"><span>Requests pesados (20%)</span><input type="checkbox" name="heavy"></label>
+      </div>
+      <div class="chart-box" style="height:116px"><canvas class="chart"></canvas></div>
+      <div class="stats"></div>
+      <button class="btn ghost" data-act="reset" style="padding:6px">↺ Reiniciar</button>
+    </div>
+  </div>
+  <aside class="notes">
+    Desafíos para la clase:
+    1) Con 3 servidores, ¿a cuántos req/s empieza a degradarse? (≈ 3 × 5,7).
+    2) Subir a 30 req/s: ¿cuántos servidores hacen falta para que no haya errores?
+    3) Prender requests pesados y comparar Round Robin vs Least Connections mirando la p95.
+    4) Apagar los health checks y tirar un servidor. ¿Qué pasa con el % de error?
+    5) IP Hash con 4 clientes y 3 servidores: ¿la carga queda pareja?
+  </aside>
+</section>
+
+<!-- ============ 17. RESUMEN ============ -->
+<section>
+  <div class="kicker">Resumen</div>
+  <h2>Lo que nos llevamos</h2>
+  <div class="summary">
+    <div class="card bad fragment"><div class="ico">🖥️</div><h4>Un solo nodo</h4><p>SPOF, tope de capacidad, techo vertical y downtime en cada deploy.</p></div>
+    <div class="card good fragment"><div class="ico">↔️</div><h4>Escalar horizontal</h4><p>N servidores idénticos detrás de un load balancer. El cliente solo ve el LB.</p></div>
+    <div class="card good fragment"><div class="ico">🎯</div><h4>Algoritmos</h4><p><b>RR</b> simple · <b>Least Conn</b> cargas variables · <b>Hash</b> afinidad · <b>Weighted</b> nodos distintos.</p></div>
+    <div class="card good fragment"><div class="ico">♥</div><h4>Health checks</h4><p>El LB detecta nodos rotos, los saca de rotación y los reincorpora.</p></div>
+    <div class="card good fragment"><div class="ico">🔑</div><h4>Stateless</h4><p>La sesión en un store compartido, no en la memoria del servidor.</p></div>
+    <div class="card good fragment"><div class="ico">🧭</div><h4>L4 vs L7</h4><p>IP/puerto, rápido y genérico, vs. HTTP: routing por path, headers y cookies.</p></div>
+    <div class="card good fragment"><div class="ico">🛡️</div><h4>Redundar el LB</h4><p>Activo-pasivo con VIP y heartbeats, o un LB gestionado.</p></div>
+    <div class="card good fragment"><div class="ico">🔁</div><h4>Rolling deploys</h4><p>Drenar, actualizar, verificar y seguir: deploys sin cortar el servicio.</p></div>
+  </div>
+  <aside class="notes">
+    Repasar cada tarjeta conectándola con la demo correspondiente. Idea central: un LB no es solo "repartir carga"; es lo
+    que habilita alta disponibilidad, escalar elásticamente y deployar sin miedo. Abrir preguntas.
+  </aside>
+</section>
+
+</div>
+</div>
+
+<script src="vendor/reveal/reveal.js"></script>
+<script src="vendor/reveal/plugin/notes.js"></script>
+<script src="vendor/gsap.min.js"></script>
+<script src="vendor/chart.umd.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/widgets.js"></script>
+<script src="js/scenes.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
