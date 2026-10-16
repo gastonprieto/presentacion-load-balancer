@@ -127,23 +127,30 @@
   <div class="demo">
     <div class="stage"><svg class="sim"></svg></div>
     <div class="panel">
-      <p class="lead">La respuesta natural: <b>«comprar una máquina más grande»</b> (scale up).</p>
+      <p class="lead">Scale up: <b>«comprar una máquina más grande»</b>.</p>
       <div class="actions">
         <button class="btn primary" data-act="up">⬆ Escalar verticalmente</button>
         <button class="btn ghost" data-act="reset">↺</button>
       </div>
-      <div class="chart-box tall"><canvas class="chart"></canvas></div>
+      <div class="box">
+        <div class="label">Tráfico entrante</div>
+        <div class="slider-row"><input type="range" min="1" max="40" step="1" value="4"><span class="rate-out">4 req/s</span></div>
+        <div class="slider-row" style="margin-top:6px;font-size:13px"><span class="srv-out" style="font-size:13px"></span><span style="flex:1"></span><span class="util-out ok">80%</span></div>
+      </div>
+      <div class="chart-box" style="height:150px"><canvas class="cost-chart"></canvas></div>
+      <div class="stats" data-fields="ok,err,p95"></div>
       <ul class="points">
-        <li class="fragment">💸 El costo crece <b>mucho más rápido</b> que la capacidad</li>
+        <li class="fragment">💸 El costo crece <b>más rápido</b> que la capacidad</li>
         <li class="fragment">⏻ Cada salto requiere reiniciar → downtime</li>
         <li class="fragment">🧱 Hay un techo físico</li>
-        <li class="fragment">☝️ Y sigue siendo <b>un solo nodo</b>: el SPOF no se fue</li>
+        <li class="fragment">☝️ Sigue siendo <b>un solo nodo</b> (SPOF)</li>
       </ul>
-      <p style="font-size:12px;color:#64748b">Valores ilustrativos.</p>
     </div>
   </div>
   <aside class="notes">
-    Apretar "Escalar" varias veces. Cada salto: la VM se apaga para redimensionarla (downtime) y vuelve más grande.
+    Arrancar con 4 req/s (80% de la máquina chica). Subir el tráfico a ~12 req/s: se forma cola, sube la latencia y aparecen 503.
+    Apretar "Escalar": durante el reinicio todos los requests fallan (downtime) y la máquina vuelve más grande y absorbe el tráfico.
+    Seguir subiendo tráfico y escalando varias veces. Cada salto: la VM se apaga para redimensionarla y vuelve más grande.
     Mirar el gráfico: la capacidad (barras) crece cada vez menos (rendimientos decrecientes: más cores no escalan lineal
     por locks, memoria compartida, GC…), mientras el costo (línea roja) se dispara. Al final se choca contra el techo.
     Aclarar que escalar vertical no está mal: es lo primero que conviene probar (es simple). El problema es depender solo de eso.

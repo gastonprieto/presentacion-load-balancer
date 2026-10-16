@@ -95,52 +95,47 @@
   /* ---------- 5. escalado vertical ---------- */
 
   S.vertical = slide => {
-    const svg = slide.querySelector('svg.sim');
-    svg.setAttribute('viewBox', '0 0 900 590');
-    svg.classList.add('netsim');
-
+    // capacidad = workers del nodo (×4 por unidad, ~5 req/s por unidad); costo relativo
     const steps = [
-      { spec: '2 vCPU · 4 GB', label: '2', w: 130, h: 90, cap: 1, cost: 1 },
-      { spec: '4 vCPU · 16 GB', label: '4', w: 150, h: 140, cap: 2, cost: 2.4 },
-      { spec: '16 vCPU · 64 GB', label: '16', w: 180, h: 215, cap: 6, cost: 10 },
-      { spec: '64 vCPU · 256 GB', label: '64', w: 210, h: 300, cap: 16, cost: 45 },
-      { spec: '128 vCPU · 1 TB', label: '128', w: 235, h: 380, cap: 24, cost: 140 },
-      { spec: '224 vCPU · 12 TB', label: '224', w: 255, h: 445, cap: 29, cost: 480 }
+      { spec: '2 vCPU · 4 GB', label: '2', w: 210, h: 96, cap: 1, cost: 1 },
+      { spec: '4 vCPU · 16 GB', label: '4', w: 220, h: 140, cap: 2, cost: 2.4 },
+      { spec: '16 vCPU · 64 GB', label: '16', w: 235, h: 215, cap: 6, cost: 10 },
+      { spec: '64 vCPU · 256 GB', label: '64', w: 250, h: 300, cap: 16, cost: 45 },
+      { spec: '128 vCPU · 1 TB', label: '128', w: 265, h: 380, cap: 24, cost: 140 },
+      { spec: '224 vCPU · 12 TB', label: '224', w: 280, h: 445, cap: 29, cost: 480 }
     ];
-    const FLOOR = 540, CEIL = 80, X = 560;
+    const FLOOR = 540, CEIL = 80;
+    const BASE = { lb: false, servers: 1, rate: 4, arrival: 'poisson', capacity: 4, serviceTime: 0.8, serviceJitter: 0.2, queueMax: 10, slowThreshold: 2, showHandled: false };
 
-    svgEl('rect', { x: 0, y: 0, width: 900, height: CEIL, class: 'ceil-zone' }, svg);
-    const ceil = svgEl('line', { x1: 20, x2: 880, y1: CEIL, y2: CEIL, class: 'ceil' }, svg);
-    svgEl('text', { x: 880, y: CEIL - 12, class: 't-sub', 'text-anchor': 'end' }, svg)
-      .textContent = 'techo físico: la máquina más grande que se puede comprar';
-    svgEl('line', { x1: 20, x2: 880, y1: FLOOR, y2: FLOOR, class: 'floor' }, svg);
+    const sim = setup(slide, BASE);
+    const svg = sim.svg;
+    const range = slide.querySelector('input[type=range]');
+    const rateOut = slide.querySelector('.rate-out');
+    const capOut = slide.querySelector('.srv-out');
+    const util = slide.querySelector('.util-out');
+    let i = 0, busy = false, ceil;
 
-    const client = { x: 130, y: 400, hw: 46, hh: 27 };
-    const link = svgEl('path', { class: 'link' }, svg);
-    const cg = svgEl('g', { class: 'client', transform: `translate(${client.x},${client.y})` }, svg);
-    cg.style.setProperty('--c', '#7dd3fc');
-    svgEl('rect', { class: 'node-box', x: -46, y: -27, width: 92, height: 54, rx: 10 }, cg);
-    svgEl('text', { x: -28, y: 7, class: 't-emoji', 'text-anchor': 'middle' }, cg).textContent = '👥';
-    svgEl('text', { x: -12, y: 5, class: 't-title small' }, cg).textContent = 'Usuarios';
-
-    const sg = svgEl('g', { class: 'srv' }, svg);
-    const box = svgEl('rect', { class: 'node-box', rx: 12 }, sg);
-    const spec = svgEl('text', { class: 't-title', 'text-anchor': 'middle' }, sg);
-    const note = svgEl('text', { class: 't-sub', 'text-anchor': 'middle' }, sg);
-    const top = svgEl('g', {}, svg);
-
-    const dim = { w: 0, h: 0 };
-    let i = 0, busy = false;
-    const draw = () => {
-      box.setAttribute('x', X - dim.w / 2); box.setAttribute('y', FLOOR - dim.h);
-      box.setAttribute('width', dim.w); box.setAttribute('height', dim.h);
-      spec.setAttribute('x', X); spec.setAttribute('y', FLOOR - dim.h + 26);
-      note.setAttribute('x', X); note.setAttribute('y', FLOOR - dim.h + 46);
-      const srv = { x: X, y: Math.max(FLOOR - dim.h / 2, FLOOR - 120), hw: dim.w / 2, hh: 10 };
-      link.setAttribute('d', curve(edge(client, srv), edge(srv, client)));
+    // techo y piso, detrás de la simulación
+    const decorate = () => {
+      const g = svgEl('g', {});
+      svg.insertBefore(g, svg.firstChild);
+      svgEl('rect', { x: 0, y: 0, width: 900, height: CEIL, class: 'ceil-zone' }, g);
+      ceil = svgEl('line', { x1: 20, x2: 880, y1: CEIL, y2: CEIL, class: 'ceil' }, g);
+      svgEl('text', { x: 880, y: CEIL - 12, class: 't-sub', 'text-anchor': 'end' }, g)
+        .textContent = 'techo físico: la máquina más grande que se puede comprar';
+      svgEl('line', { x1: 20, x2: 880, y1: FLOOR, y2: FLOOR, class: 'floor' }, g);
     };
 
-    const canvas = slide.querySelector('canvas.chart');
+    const sync = () => {
+      const r = +range.value, cap = steps[i].cap * 5;
+      const u = Math.round((r / cap) * 100);
+      rateOut.textContent = `${r} req/s`;
+      capOut.innerHTML = `capacidad del nodo ≈ <b>${cap}</b> req/s`;
+      util.textContent = `${u}%`;
+      util.className = 'util-out ' + (u < 70 ? 'ok' : u <= 100 ? 'warn' : 'bad');
+    };
+
+    const canvas = slide.querySelector('canvas.cost-chart');
     const ch = new Chart(canvas, {
       type: 'bar',
       data: {
@@ -157,60 +152,72 @@
         responsive: true, maintainAspectRatio: false,
         plugins: { legend: { labels: { color: '#cbd5e1', boxWidth: 10, font: { size: 12 } } } },
         scales: {
-          x: { ticks: { color: '#94a3b8' }, grid: { display: false }, title: { display: true, text: 'vCPU', color: '#64748b' } },
+          x: { ticks: { color: '#94a3b8' }, grid: { display: false }, title: { display: true, text: 'vCPU · valores ilustrativos', color: '#64748b' } },
           y: { min: 0, max: 32, ticks: { color: '#38bdf8' }, grid: { color: 'rgba(148,163,184,.12)' } },
           y1: { position: 'right', min: 0, max: 500, ticks: { color: '#f87171' }, grid: { display: false } }
         }
       }
     });
 
+    // tamaño y capacidad del nodo según el escalón
     const apply = (k, animate) => {
-      const st = steps[k];
-      spec.textContent = st.spec;
-      note.textContent = `capacidad ×${st.cap} · costo ×${st.cost}`;
+      const st = steps[k], s = sim.servers[0];
+      s.name = st.spec;
+      s.status = `capacidad ×${st.cap} · costo ×${st.cost}`;
+      s.capacity = BASE.capacity * st.cap;
       ch.data.labels.push(st.label);
       ch.data.datasets[0].data.push(st.cap);
       ch.data.datasets[1].data.push(st.cost);
       ch.update();
-      if (animate) gsap.to(dim, { w: st.w, h: st.h, duration: 1, ease: 'elastic.out(1, 0.55)', onUpdate: draw });
-      else { dim.w = st.w; dim.h = st.h; draw(); }
+      const target = { hw: st.w / 2, hh: st.h / 2, y: FLOOR - st.h / 2 };
+      if (animate) gsap.to(s, Object.assign({ duration: 1, ease: 'elastic.out(1, 0.55)' }, target));
+      else Object.assign(s, target);
+      sync();
     };
 
     const reset = () => {
       i = 0; busy = false;
-      gsap.killTweensOf(dim);
-      sg.setAttribute('class', 'srv');
-      ceil.classList.remove('hit');
-      top.innerHTML = '';
+      gsap.killTweensOf(sim.servers[0]);
+      range.value = BASE.rate;
+      sim.reset(Object.assign({}, BASE));
+      decorate();
+      sim.servers[0].x = 560;
+      const c = sim.clients[0];
+      c.y = 430;
+      c.view.g.setAttribute('transform', `translate(${c.x},${c.y})`);
       ch.data.labels = []; ch.data.datasets.forEach(d => { d.data = []; });
       apply(0, false);
     };
 
-    on(slide, '[data-act=up]', () => {
+    range.addEventListener('input', () => { sim.setRate(+range.value); sync(); });
+
+    on(slide, '[data-act=up]', async () => {
       if (busy) return;
+      const s = sim.servers[0];
       if (i >= steps.length - 1) {
         ceil.classList.add('hit');
-        gsap.fromTo(dim, { h: dim.h + 22 }, { h: dim.h, duration: 0.8, ease: 'elastic.out(1, 0.3)', onUpdate: draw });
-        gsap.fromTo(sg, { x: -10 }, { x: 0, duration: 0.6, ease: 'elastic.out(1, 0.25)' });
-        pop(top, X, CEIL + 40, '🚫 No existe una máquina más grande', C.err);
+        gsap.fromTo(s, { hh: s.hh + 12, y: s.y - 12 }, { hh: s.hh, y: s.y, duration: 0.8, ease: 'elastic.out(1, 0.3)' });
+        sim.banner('🚫 No existe una máquina más grande (y sigue siendo un solo nodo)', C.err);
         return;
       }
       busy = true;
+      const gen = sim.gen;
       i++;
-      // redimensionar una VM implica apagarla: downtime
-      sg.setAttribute('class', 'srv down');
-      spec.textContent = '⏻ reiniciando…';
-      note.textContent = 'redimensionar = apagar la VM';
-      pop(top, X, FLOOR - dim.h - 14, 'downtime', C.err);
-      gsap.delayedCall(0.9, () => {
-        sg.setAttribute('class', 'srv');
-        apply(i, true);
-        busy = false;
-      });
+      // redimensionar una VM implica apagarla: los requests fallan mientras reinicia
+      s.status = '⏻ reiniciando para redimensionar…';
+      sim.setUp(s, false);
+      sim.clock.animate(1.6, p => { s.progress = p; });
+      await sim.clock.wait(1.6);
+      if (gen !== sim.gen) return;
+      s.progress = null;
+      sim.setUp(s, true);
+      apply(i, true);
+      busy = false;
     });
     on(slide, '[data-act=reset]', reset);
+
     reset();
-    return { start() {}, stop() {} };
+    return life(sim);
   };
 
   /* ---------- 6. deploy con downtime ---------- */
