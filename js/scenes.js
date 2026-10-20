@@ -462,7 +462,7 @@
       const pk = svgEl('circle', { r: 5.5, fill: C.req, class: 'pk' }, st.gP);
       move(pk, client, target, () => {
         if (!target.up) {
-          pop(st.gT, target.x - target.hw, target.y - target.hh - 8, 'timeout', C.err);
+          pop(st.gT, target.x - target.hw, target.y - target.hh - 8, '✕ conexión', C.err);
           pk.setAttribute('fill', C.err);
           move(pk, target, client, () => { pk.remove(); st.err++; });
           return;

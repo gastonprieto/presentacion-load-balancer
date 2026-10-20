@@ -393,7 +393,7 @@
       </div>
       <div class="actions"><button class="btn ghost" data-act="revive">↺ Levantar todos</button></div>
       <ul class="points">
-        <li class="fragment">Sin health checks el LB sigue mandando tráfico a un nodo muerto → 502</li>
+        <li class="fragment">Sin health checks el LB sigue mandando tráfico a un nodo muerto: no logra conectar y le devuelve 502 al cliente</li>
         <li class="fragment">Con health checks: detecta, saca, y cuando vuelve <b>lo reincorpora</b></li>
         <li class="fragment">Trade-off: chequear seguido detecta antes, pero carga más</li>
       </ul>
@@ -403,8 +403,8 @@
     </div>
   </div>
   <aside class="notes">
-    Primero con health checks OFF: tirar S2 haciendo clic. Un tercio de los requests falla (502) para siempre, porque el
-    LB no se entera. Levantar todos, prender health checks (los puntos violetas son los pings) y tirar S2 de nuevo:
+    Primero con health checks OFF: tirar S2 haciendo clic. Un tercio de los requests falla para siempre, porque el
+    LB no se entera: en S2 aparece "✕ conexión" (el LB no logra conectar) y el LB le contesta 502 al cliente. Levantar todos, prender health checks (los puntos violetas son los pings) y tirar S2 de nuevo:
     tras 2 chequeos fallidos lo marca "unhealthy", el link se pone punteado y el tráfico se reparte entre los otros dos.
     Hay algunos errores durante la ventana de detección: es inevitable y depende del intervalo.
     Diferenciar liveness (¿el proceso vive?) de readiness (¿puede atender: DB conectada, caché caliente?).
