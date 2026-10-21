@@ -1,0 +1,47 @@
+# Laboratorio de load balancing: 3 apps iguales detrás de HAProxy, más Redis
+# para las sesiones compartidas. Instrucciones en el README ("Laboratorio con Docker").
+name: lab-load-balancer
+
+x-app: &app
+  build: ./lab/app
+  restart: unless-stopped
+  stop_grace_period: 15s
+  environment: &app-env
+    WORKERS: 4         # pedidos en paralelo que atiende cada app
+    COLA: 10           # pedidos que esperan; más que eso → 503
+    WORK_MS: 100       # lo que tarda cada pedido
+
+services:
+  app1:
+    <<: *app
+    environment: { <<: *app-env, NAME: app1 }
+    ports: ["8001:3000"]   # app1 sin LB, para las slides de un solo nodo
+  app2:
+    <<: *app
+    environment: { <<: *app-env, NAME: app2 }
+  app3:
+    <<: *app
+    environment: { <<: *app-env, NAME: app3 }
+
+  lb:
+    image: haproxy:3.0-alpine
+    restart: unless-stopped
+    volumes: ["./lab/haproxy/haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro"]
+    ports:
+      - "8080:8080"   # round robin
+      - "8081:8081"   # least connections
+      - "8082:8082"   # IP hash
+      - "8083:8083"   # weighted (3:1:1)
+      - "8084:8084"   # sticky sessions
+      - "8085:8085"   # capa 4 (TCP)
+      - "8404:8404"   # panel de HAProxy
+    depends_on: [app1, app2, app3]
+
+  redis:
+    image: redis:7-alpine
+
+  # Generador de carga: docker compose run --rm carga http://lb:8080/ -c 20 -d 30
+  carga:
+    build: ./lab/app
+    entrypoint: ["node", "carga.js"]
+    profiles: ["herramientas"]
