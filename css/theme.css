@@ -346,3 +346,12 @@ html.mobile .speed-ctl button { font-size: 16px; padding: 5px 7px; }
 html.mobile .speed-ctl span { min-width: 34px; }
 
 [hidden] { display: none !important; }
+
+/* Link al repo en la diapositiva final (icono de GitHub) */
+.repo-link {
+  position: absolute; left: 50%; bottom: -6px; transform: translateX(-50%);
+  display: inline-flex; color: var(--muted); opacity: .75; transition: opacity .2s, color .2s;
+}
+.repo-link:hover { opacity: 1; color: var(--text); }
+.repo-link svg { width: 34px; height: 34px; fill: currentColor; }
+html.mobile .repo-link { position: static; transform: none; display: flex; width: max-content; margin: 20px auto 0; }
